@@ -1,0 +1,19 @@
+# Local progress and restore backups must stay off GitHub.
+participants.js
+data/
+tests/.tmp/
+__pycache__/
+*.py[cod]
+*.log
+.env
+.env.*
+!.env.example
+node_modules/
+conference-progress-*.json
+before-restore-*.json
+*.xlsx
+*.xls
+*.csv
+*.zip
+.DS_Store
+Thumbs.db

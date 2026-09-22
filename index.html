@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light"><title>Conference Desk · Farok</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="liquid.css">
+  <script defer src="participants.js"></script><script defer src="core.js"></script><script defer src="map-data.js"></script><script defer src="map.js"></script><script defer src="export.js"></script><script defer src="app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#participants">Skip to participants</a>
+  <aside class="sidebar" aria-label="Workspace navigation">
+    <div class="brand" title="Conference Desk"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M4 6h9a5 5 0 0 1 5 5v17a9 9 0 0 0-6-3H4V6Z"/><path d="M28 6h-5a5 5 0 0 0-5 5v17a9 9 0 0 1 6-3h4V6Z"/></svg><span class="sr-only">Conference Desk</span></div>
+    <nav class="views" aria-label="Participant views">
+      <button data-view="all" data-panel="all" class="view active" aria-label="All participants" aria-expanded="false" aria-controls="nav-drawer" data-tooltip="All participants"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M16 4a3 3 0 0 1 0 6M18 13a5 5 0 0 1 3 5v3"/></svg><span id="nav-total" class="sr-only">124</span></button>
+      <button data-view="priority" data-panel="priority" class="view" aria-label="Priority" aria-expanded="false" aria-controls="nav-drawer" data-tooltip="Priority"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21V4m0 0c5-5 9 5 14 0v10c-5 5-9-5-14 0"/></svg><span id="nav-priority" class="sr-only">0</span></button>
+      <button data-view="not-attending" data-panel="not-attending" class="view" aria-label="Not attending" aria-expanded="false" aria-controls="nav-drawer" data-tooltip="Not attending"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="7" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3m2-13 5 5m0-5-5 5"/></svg><span id="nav-absent" class="sr-only">3</span></button>
+      <button data-panel="countries" class="view" aria-label="All countries" aria-expanded="false" aria-controls="nav-drawer" data-tooltip="All countries"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/></svg></button>
+    </nav>
+    <div class="sidebar-bottom"><span class="avatar" title="Farok’s workspace">FH</span></div>
+  </aside>
+  <aside id="nav-drawer" class="nav-drawer" aria-labelledby="nav-drawer-title" hidden>
+    <div class="drawer-heading"><div><div class="eyebrow">YOUR WORKSPACE</div><h2 id="nav-drawer-title">All participants</h2></div><button id="close-drawer" class="drawer-close" aria-label="Collapse navigation">×</button></div>
+    <p id="drawer-count" class="drawer-count"></p>
+    <nav id="country-nav" class="country-nav" aria-label="Filter by country" hidden></nav>
+    <nav id="drawer-people" class="drawer-people" aria-label="Find a participant"></nav>
+  </aside>
+  <div class="shell">
+    <header class="topbar"><div class="breadcrumb">Workspace <span>/</span> <strong>Publishers 2026</strong></div><div id="save-status" class="save-status" role="status" aria-live="polite"><i></i><span>Opening saved progress…</span></div></header>
+    <main>
+      <div id="save-error" class="notice error" role="alert" hidden></div>
+      <section class="page-heading"><div><div class="eyebrow">1–3 NOVEMBER 2026 <span>·</span> SHARJAH</div><h1>Participant dashboard<span>.</span></h1><p>Your people, their arrangements, and the details to follow up.</p></div><div class="backup-controls"><button class="button" id="restore-backup" title="Restore a progress backup">↥ <span>Restore</span></button><button class="button primary" id="export-data" title="Download everyone’s details, progress and notes as an Excel workbook">↓ <span>Export Data</span></button><input id="backup-file" type="file" accept="application/json,.json" hidden></div></section>
+      <section class="world-panel" aria-labelledby="world-title">
+        <div class="world-heading"><div><div class="eyebrow">YOUR GLOBAL GUEST LIST</div><h2 id="world-title">Attendance around the world</h2></div><div class="map-totals"><span><i class="orange-dot"></i><strong id="map-active-count">49</strong> countries attending</span><span class="priority-total"><i class="red-dot"></i><strong id="map-priority-count">0</strong> with priority</span></div></div>
+        <div class="world-content">
+          <div class="map-stage"><div class="map-instruction">Hover to explore. Click a country to filter its cards.</div><div id="world-map" aria-busy="true"><p class="map-fallback">Loading the world map. You can also choose a country from the country list.</p></div><div class="map-controls" aria-label="Map zoom"><button id="map-zoom-in" aria-label="Zoom in on world map" title="Zoom in">+</button><button id="map-zoom-out" aria-label="Zoom out on world map" title="Zoom out">−</button><button id="map-reset" aria-label="Reset world map" title="Reset map">↺</button></div><div class="map-legend"><span><i class="legend-active"></i>Attending</span><span><i class="legend-dim"></i>No attendees</span><span><i class="legend-urgent"></i>Priority follow-up</span></div></div>
+          <aside class="country-spotlight" aria-label="Country participants"><label class="map-picker"><span>EXPLORE A COUNTRY</span><select id="map-country"><option value="">World overview</option></select></label><div id="map-details" aria-live="polite" aria-atomic="true"></div></aside>
+        </div>
+        <div class="map-caption"><span>Based on your full assigned list. Priority includes people not attending.</span><a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Map: Natural Earth</a></div>
+      </section>
+      <section class="stats" aria-label="Progress overview">
+        <article class="stat people-stat"><div class="stat-top"><span>YOUR PARTICIPANTS</span><span class="stat-icon">♙</span></div><div class="stat-value" id="stat-total">124</div><div class="stat-foot" id="stat-attendance">121 attending · 3 not attending</div></article>
+        <article class="stat"><div class="stat-top"><span>VISA COMPLETED</span><span class="stat-icon">▣</span></div><div class="stat-value"><span id="stat-visa">0</span><small> / <span class="attending-total">121</span></small></div><div class="meter"><span id="meter-visa"></span></div><div class="stat-foot" id="remaining-visa">121 remaining</div></article>
+        <article class="stat"><div class="stat-top"><span>FLIGHTS COMPLETED</span><span class="stat-icon">↗</span></div><div class="stat-value"><span id="stat-flight">0</span><small> / <span class="attending-total">121</span></small></div><div class="meter"><span id="meter-flight"></span></div><div class="stat-foot" id="remaining-flight">121 remaining</div></article>
+        <article class="stat"><div class="stat-top"><span>HOTELS COMPLETED</span><span class="stat-icon">⌂</span></div><div class="stat-value"><span id="stat-hotel">0</span><small> / <span class="attending-total">121</span></small></div><div class="meter"><span id="meter-hotel"></span></div><div class="stat-foot" id="remaining-hotel">121 remaining</div></article>
+      </section>
+      <div class="stats-caption">Arrangement totals include attending participants across all countries.</div>
+      <section class="directory" aria-labelledby="directory-title">
+        <div class="directory-heading"><h2 id="directory-title">Your participants <span id="result-count">124</span></h2><button class="text-button" id="clear-filters">Reset filters</button></div>
+        <div class="filters"><label class="search"><span class="sr-only">Search participants</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input id="search" type="search" placeholder="Search name, email, organization or notes…" autocomplete="off"></label>
+          <label class="filter"><span>Country</span><select id="filter-country"><option value="">All countries</option></select></label>
+          <label class="filter"><span>Attendance</span><select id="filter-attendance"><option value="">Everyone</option><option value="attending">Attending</option><option value="not-attending">Not attending</option></select></label>
+          <label class="filter"><span>Priority</span><select id="filter-priority"><option value="">All priorities</option><option value="priority">Priority only</option><option value="normal">Normal</option></select></label>
+          <label class="filter"><span>Arrangements</span><select id="filter-completion"><option value="">Any progress</option><option value="pending">Something pending</option><option value="complete">All three complete</option><option value="visa-pending">Visa pending</option><option value="flight-pending">Flight pending</option><option value="hotel-pending">Hotel pending</option></select></label>
+        </div>
+        <div id="filter-summary" class="filter-summary">Grouped by country · Alphabetical order</div>
+        <div id="participants" aria-busy="true"></div>
+        <div id="empty" class="empty" hidden><span>⌕</span><h3>No participants match these filters</h3><p>Try another name or clear a filter to see more people.</p><button class="button" id="empty-reset">Reset filters</button></div>
+      </section>
+      <footer><span>Conference Desk <span>·</span> Farok’s participant list</span><button class="text-button" id="saving-help">How saving works</button></footer>
+    </main>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <dialog id="help-dialog"><form method="dialog"><button class="close" aria-label="Close saving help">×</button></form><div class="eyebrow">YOUR WORK, SAVED</div><h2>Pick up where you left off.</h2><p id="storage-explanation"></p><p>Attendance, priority, arrangement checkboxes, notes, and unfinished note drafts are saved automatically.</p><p><strong>Export Data</strong> downloads an Excel workbook with everyone’s details and progress, plus a Notes tab with all notes and drafts. Filters do not limit the export.</p><p>Use the backup button below to save a restorable copy. <strong>Restore</strong> accepts these JSON backups so you can move your progress to another browser or to the future GitHub version. Excel exports are for working with your data outside the dashboard.</p><p>With the local launcher, progress is stored in <code>data/progress.json</code> and the latest 100 previous saves are kept in <code>data/backups</code>. Keep this dashboard folder when moving computers.</p><button class="button primary" id="help-export">Download restore backup</button></dialog>
+  <dialog id="confirm-dialog"><div class="eyebrow">RESTORE BACKUP</div><h2>Replace current progress?</h2><p id="restore-summary"></p><p>Your current progress will be downloaded as a safety copy first.</p><div class="dialog-actions"><button class="button" id="cancel-restore">Cancel</button><button class="button primary" id="confirm-restore">Restore progress</button></div></dialog>
+</body>
+</html>
