@@ -46,3 +46,55 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 @media(max-width:1100px){.shell{margin-left:96px}.sidebar{left:14px;width:70px;padding-left:7px;padding-right:7px}.topbar{padding:0 25px}main{padding:18px 25px 25px}.world-content{height:auto}.map-stage{position:relative;inset:auto;height:clamp(320px,49vw,520px)}.country-spotlight{position:relative;inset:auto;width:100%;max-height:none;display:grid;grid-template-columns:180px 1fr;gap:22px;margin-top:5px;padding:19px}.map-picker{border:0;margin:0;padding:3px 0;align-content:start}.world-overview{display:grid;grid-template-columns:70px 1fr;text-align:left;column-gap:17px;align-items:center}.overview-orbit{width:70px;height:70px;grid-row:1/4;margin:0}.world-overview>p{max-width:none}.calm-note{border:0;margin-top:5px;padding:0}.world-overview .urgency-note{grid-column:2;margin-top:5px}.priority-country-list{grid-column:1/-1;margin-top:8px}.map-person-list{grid-template-columns:1fr 1fr}.map-caption{margin-top:12px}.map-legend{bottom:25px;right:0}.map-instruction{bottom:3px;right:0}.map-controls{bottom:72px;right:0}.world-heading h2{font-size:22px}.map-totals{font-size:9px;gap:8px;flex-direction:column;align-items:flex-start}.page-heading h1{font-size:30px}.nav-drawer{left:96px;width:300px}}
 @media(max-width:700px){.sidebar{inset:10px auto 10px 9px;width:57px;padding:19px 5px 0;border-radius:21px}.brand{padding-bottom:29px}.brand svg{width:27px;height:30px}.view{width:45px;height:47px;border-radius:15px}.view svg{width:21px;height:21px}.views{gap:12px}.avatar{width:29px;height:29px;font-size:9px}.sidebar-bottom{padding:15px 0}.shell{margin-left:72px}.topbar{height:62px;padding:0 14px;gap:8px;justify-content:flex-end}.breadcrumb{display:none}.save-status{font-size:9px;max-width:none}main{padding:13px 14px 24px}.page-heading{display:block;margin-bottom:26px}.page-heading h1{font-size:28px;line-height:1.15}.page-heading p{font-size:11px}.backup-controls{margin-top:17px;gap:7px}.backup-controls .button{padding:10px 13px;font-size:10px}.world-heading{display:block}.world-heading h2{font-size:21px;max-width:240px;margin-top:8px}.world-heading .eyebrow{font-size:7px}.map-totals{flex-direction:row;gap:12px;font-size:8px;margin-top:13px;flex-wrap:wrap}.map-totals strong{font-size:12px}.world-panel{padding:0;margin-bottom:19px}.world-panel::before{inset:-15px -12px}.map-stage{height:clamp(240px,65vw,400px);margin:0 -9px}.map-legend{bottom:27px;right:6px;left:6px;justify-content:center;gap:9px;font-size:7px;padding:9px 5px;white-space:nowrap}.map-legend i{width:5px;height:5px}.map-instruction{right:7px;bottom:4px;font-size:8px;max-width:none}.map-controls{right:6px;bottom:64px;padding:3px;gap:1px}.map-controls button{width:27px;height:27px;font-size:17px}.country-spotlight{display:block;margin-top:10px;padding:16px;border-radius:22px}.map-picker{border-bottom:1px solid #dac4b34d;padding:0 0 11px;margin-bottom:14px;gap:7px}.world-overview{grid-template-columns:55px 1fr;column-gap:12px}.overview-orbit{width:55px;height:55px}.overview-orbit>span{font-size:25px}.overview-orbit small{font-size:7px}.world-overview h3{font-size:11px}.world-overview>p{font-size:9px}.calm-note{font-size:8px;line-height:1.6}.map-person-list{grid-template-columns:1fr}.spotlight-scroll{max-height:200px}.map-caption{font-size:7px;line-height:1.7;display:block;padding-top:6px}.map-caption a{display:block;margin-top:3px}.nav-drawer{inset:10px 10px 10px 75px;width:auto;max-width:310px;padding:20px 10px 15px;border-radius:22px}.drawer-heading{padding:0 5px}.drawer-heading h2{font-size:19px}.drawer-count{padding:0 5px;font-size:9px}.drawer-person{padding:11px 6px;gap:9px}.drawer-person strong{font-size:11px}.drawer-person small{font-size:9px}.stats{grid-template-columns:1fr 1fr;gap:9px}.stat{padding:13px 11px;border-radius:18px}.stat-top{font-size:7px;letter-spacing:.4px}.stat-icon{font-size:15px}.stat-value{font-size:27px}.stat-foot{font-size:8px;line-height:1.6}.stat-value small{font-size:11px}.people-stat .stat-foot{margin-top:21px}.cards{grid-template-columns:1fr}.card-body{padding:18px 15px 0}.person-name{font-size:18px}.organization,.contact-line{font-size:11px}.attendance,.completion-count,.arrangement{font-size:10px}.notes summary{padding:13px 15px}.notes-content{padding:0 13px 15px}.compose-bottom span{font-size:8px}.compose-bottom button{padding:7px 9px}.directory-heading h2{font-size:15px}.directory-heading h2>span{font-size:9px;margin-left:5px;padding:3px 6px}.text-button{font-size:9px}.group-heading{gap:7px;flex-wrap:wrap}.group-heading h3{font-size:14px}.group-heading .group-count{font-size:9px}.search{min-width:0}.filter{min-width:0;flex-basis:calc(50% - 8px);max-width:calc(50% - 4px)}.filter select{font-size:10px}.search input{font-size:10px}.toast{left:50%;border-radius:18px;font-size:11px}footer{font-size:8px}}
 @media(prefers-reduced-transparency:reduce){.nav-drawer,.country-spotlight,.map-legend{background:#fff6f1;backdrop-filter:none}}
+
+/* Soft focus follows each surface's shape; keyboard focus remains visible. */
+:root{--motion-ease:cubic-bezier(.22,.8,.25,1);--focus-soft:0 0 0 3px #bb58171c;--focus-keyboard:0 0 0 2px #fff5ed,0 0 0 4px #b65d2cad}
+:is(button,a,input,textarea,select,summary,[tabindex]):focus{outline:none;outline-offset:0}
+:is(button,summary,a):focus-visible{outline:none;box-shadow:var(--focus-keyboard)}
+.search:focus-within,.filter:focus-within{border-color:#e6bda2;background:#fffaf4c9;box-shadow:var(--focus-soft),inset 0 1px 0 #fff}
+.search input:focus,.filter select:focus,.map-picker select:focus{outline:none;box-shadow:none}
+.map-picker:focus-within{border-radius:12px;background:#ffffff52;box-shadow:var(--focus-soft)}
+.note-compose textarea:focus{border-color:#e6bda2;box-shadow:var(--focus-soft);outline:none}
+.note-row:focus-within{border-color:#e6bda2;box-shadow:var(--focus-soft)}
+.note-row textarea:focus{outline:none;box-shadow:none}
+.arrangement input:focus-visible,.note-row input:focus-visible{box-shadow:var(--focus-keyboard)}
+.card:focus{outline:none}.card:focus-visible{box-shadow:var(--focus-keyboard)}
+.contact-line a:focus-visible{border-radius:4px}.notes summary:focus-visible{box-shadow:inset 0 0 0 2px #bb581799;border-radius:14px}
+#attendance-map:focus,.map-country:focus,.map-point:focus{outline:none;box-shadow:none}
+.map-country:focus-visible{stroke:#9d4618;stroke-width:2.2;fill:#e88135;opacity:1}
+.map-point:focus-visible .point-visible{stroke:#713710;stroke-width:2.4;fill:#bb5817}
+
+/* Short, responsive motion. No looping effects or scroll interception. */
+.search,.filter,.map-picker,.note-row,.note-compose textarea{transition:background-color 180ms ease,border-color 180ms ease,box-shadow 180ms ease}
+:is(.button,.view,.drawer-close,.drawer-person,.country-link,.attendance,.priority-button,.map-controls button,.text-button,.note-delete){transition:transform 230ms var(--motion-ease),background-color 180ms ease,color 180ms ease,box-shadow 230ms ease,border-color 180ms ease;transform-origin:center}
+:is(.button,.view,.drawer-close,.attendance,.priority-button,.map-controls button):active:not(:disabled){transform:scale(.96)}
+.card{transition:transform 300ms var(--motion-ease),box-shadow 250ms ease,border-color 220ms ease,background-color 220ms ease}
+.notes .chevron{transition:transform 310ms var(--motion-ease)}
+.stat-value,.completion-count,.group-count{font-variant-numeric:tabular-nums}
+.meter span{transition:width 380ms var(--motion-ease)}
+.map-country{transition:fill 180ms ease,opacity 180ms ease,stroke 160ms ease,stroke-width 160ms ease}
+.point-visible{transition:fill 180ms ease,stroke 180ms ease,stroke-width 160ms ease}
+.priority-halo{animation:urgency-appear 300ms ease both}
+.nav-drawer{transform-origin:0 20%;will-change:auto}
+.nav-drawer[aria-hidden="true"]{pointer-events:none}
+dialog[open]{animation:dialog-arrive 280ms var(--motion-ease) both}
+dialog[open]::backdrop{animation:surface-fade 180ms ease both}
+.toast:not([hidden]){animation:toast-arrive 260ms var(--motion-ease) both}
+@media(hover:hover) and (pointer:fine){
+  .card:hover{transform:translateY(-2px)}
+  :is(.button,.drawer-close,.priority-button,.map-controls button):hover:not(:disabled){transform:translateY(-1px)}
+  :is(.button,.drawer-close,.priority-button,.map-controls button):active:not(:disabled){transform:translateY(0) scale(.96)}
+}
+@keyframes urgency-appear{from{opacity:0}to{opacity:.76}}
+@keyframes dialog-arrive{from{opacity:0;translate:0 10px;scale:.975}to{opacity:1;translate:0 0;scale:1}}
+@keyframes surface-fade{from{opacity:0}to{opacity:1}}
+@keyframes toast-arrive{from{opacity:0;translate:0 8px}to{opacity:1;translate:0 0}}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+  .card:hover,:is(.button,.view,.drawer-close,.priority-button,.map-controls button):is(:hover,:active){transform:none!important}
+}
+@media(forced-colors:active){
+  :is(button,a,input,textarea,select,summary,[tabindex]):focus-visible{outline:2px solid Highlight;outline-offset:2px;box-shadow:none}
+  .search:focus-within,.filter:focus-within,.note-row:focus-within{outline:2px solid Highlight;outline-offset:2px}
+  .map-country:focus-visible,.map-point:focus-visible .point-visible{stroke:Highlight;stroke-width:3}
+}

@@ -8,9 +8,14 @@
     if(!data){host.setAttribute('aria-busy','false');host.querySelector('p').textContent='Map unavailable. Use the country list or filters to explore your participants.';return {update(){}};}
     const $=id=>document.getElementById(id),byCode=new Map(data.countries.map(c=>[c.code,c]));
     const assigned=new Map(people.map(p=>[p.countryCode,p.country]));
-    let records=null,summary=new Map(),hovered='',selected='',zoom=1,focusCenter=[550,275],pointerStart=null,panned=false;
+    let records=null,summary=new Map(),hovered='',selected='',zoom=1,focusCenter=[550,275],pointerStart=null,panned=false,zoomFrame=0,detailMotion=null;
+    const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
     host.innerHTML=`<svg id="attendance-map" viewBox="0 0 1100 550" role="group" aria-label="Interactive world attendance map" aria-describedby="map-description"><desc id="map-description">Orange countries have attending participants. Dim countries have none. Red halos mark countries with priority participants. Focus or hover over a country to read names. Activate it to filter the participant cards. Small countries have location dots.</desc><defs><filter id="priority-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="5"/></filter></defs><g id="map-geometry"><path class="map-graticule" d="${data.graticule}"/>${data.countries.map(c=>`<path d="${c.path}" class="map-country is-dim" data-code="${esc(c.code)}" ${assigned.has(c.code)?`role="button" tabindex="${c.area<75?'-1':'0'}"`:'role="img"'} aria-label="${esc(assigned.get(c.code)||c.name)}"/>`).join('')}<g id="priority-halos" aria-hidden="true" pointer-events="none"></g><g id="small-country-points">${data.countries.filter(c=>assigned.has(c.code)&&c.area<75).map(c=>`<g class="map-point is-dim" data-code="${esc(c.code)}" transform="translate(${c.center})" role="button" tabindex="0" aria-label="${esc(assigned.get(c.code))}"><circle class="point-hit" r="8"/><circle class="point-visible" r="3.8"/></g>`).join('')}</g></g></svg>`;
     const svg=$('attendance-map'),details=$('map-details');
+    function revealDetails(){
+      detailMotion?.cancel();
+      if(!reducedMotion.matches&&details.animate)detailMotion=details.animate([{opacity:.5,translate:'0 4px'},{opacity:1,translate:'0 0'}],{duration:180,easing:'cubic-bezier(.22,.8,.25,1)'});
+    }
     $('map-country').insertAdjacentHTML('beforeend',[...assigned.entries()].sort((a,b)=>a[1].localeCompare(b[1])).map(([code,country])=>`<option value="${esc(code)}">${esc(country)}</option>`).join(''));
     function overview(){
       if(!records)return;
@@ -28,13 +33,25 @@
       host.querySelectorAll('.is-hovered').forEach(el=>el.classList.remove('is-hovered'));
       if(code)host.querySelectorAll(`[data-code="${code}"]`).forEach(el=>el.classList.add('is-hovered'));
     }
-    function explore(code){hovered=code;highlight(code);show(code||selected);if(code&&zoom===1)focusCenter=byCode.get(code)?.center||focusCenter;}
+    function explore(code){const changed=hovered!==code;hovered=code;highlight(code);show(code||selected);if(changed)revealDetails();if(code&&zoom===1)focusCenter=byCode.get(code)?.center||focusCenter;}
     function select(code){selected=assigned.has(code)?code:'';hovered='';highlight(code);$('map-country').value=selected;show(code);if(zoom>1&&byCode.has(code)){focusCenter=byCode.get(code).center;applyZoom();}if(assigned.has(code))onSelect(assigned.get(code));}
-    function applyZoom(){
+    function applyZoom(smooth=true){
+      cancelAnimationFrame(zoomFrame);zoomFrame=0;
       const w=1100/zoom,h=550/zoom,x=Math.max(0,Math.min(1100-w,focusCenter[0]-w/2)),y=Math.max(0,Math.min(550-h,focusCenter[1]-h/2));
-      svg.setAttribute('viewBox',`${x} ${y} ${w} ${h}`);svg.classList.toggle('zoomed',zoom>1);
+      const target=[x,y,w,h],from=svg.getAttribute('viewBox').split(' ').map(Number);
+      svg.classList.toggle('zoomed',zoom>1);
       $('map-zoom-in').disabled=zoom>=4;$('map-zoom-out').disabled=zoom<=1;
+      if(!smooth||reducedMotion.matches||target.every((n,i)=>Math.abs(n-from[i])<.01)){svg.setAttribute('viewBox',target.join(' '));delete svg.dataset.zooming;return;}
+      svg.dataset.zooming='true';const start=performance.now();
+      const frame=time=>{
+        const progress=Math.min(1,(time-start)/340),ease=1-Math.pow(1-progress,3);
+        svg.setAttribute('viewBox',from.map((n,i)=>n+(target[i]-n)*ease).join(' '));
+        if(progress<1)zoomFrame=requestAnimationFrame(frame);
+        else{zoomFrame=0;svg.setAttribute('viewBox',target.join(' '));delete svg.dataset.zooming;}
+      };
+      zoomFrame=requestAnimationFrame(frame);
     }
+    reducedMotion.addEventListener('change',()=>{if(reducedMotion.matches){applyZoom(false);detailMotion?.finish();}});
     svg.addEventListener('pointerover',e=>{if(e.pointerType==='touch'||pointerStart)return;const code=e.target.closest('[data-code]')?.dataset.code;if(code&&code!==hovered)explore(code);});
     // Keep the last explored country visible so its names and action stay reachable.
     svg.addEventListener('pointerleave',()=>{highlight(selected);});
@@ -45,15 +62,15 @@
       if(code&&(e.key==='Enter'||e.key===' ')){e.preventDefault();select(code);}
       if(e.key==='Escape'){selected='';hovered='';$('map-country').value='';onSelect('');overview();}
     });
-    svg.addEventListener('pointerdown',e=>{panned=false;if(zoom<=1||e.pointerType==='touch')return;pointerStart={x:e.clientX,y:e.clientY,center:[...focusCenter]};});
-    svg.addEventListener('pointermove',e=>{if(!pointerStart)return;const dx=e.clientX-pointerStart.x,dy=e.clientY-pointerStart.y;if(Math.abs(dx)+Math.abs(dy)<4)return;if(!panned)svg.setPointerCapture(e.pointerId);panned=true;const box=svg.getBoundingClientRect();focusCenter=[pointerStart.center[0]-dx/box.width*1100/zoom,pointerStart.center[1]-dy/box.height*550/zoom];applyZoom();});
+    svg.addEventListener('pointerdown',e=>{panned=false;if(zoom<=1||e.pointerType==='touch')return;cancelAnimationFrame(zoomFrame);zoomFrame=0;delete svg.dataset.zooming;const view=svg.getAttribute('viewBox').split(' ').map(Number);zoom=1100/view[2];focusCenter=[view[0]+view[2]/2,view[1]+view[3]/2];pointerStart={x:e.clientX,y:e.clientY,center:[...focusCenter]};});
+    svg.addEventListener('pointermove',e=>{if(!pointerStart)return;const dx=e.clientX-pointerStart.x,dy=e.clientY-pointerStart.y;if(Math.abs(dx)+Math.abs(dy)<4)return;if(!panned)svg.setPointerCapture(e.pointerId);panned=true;const box=svg.getBoundingClientRect(),scale=Math.min(box.width/(1100/zoom),box.height/(550/zoom));focusCenter=[pointerStart.center[0]-dx/scale,pointerStart.center[1]-dy/scale];applyZoom(false);});
     const release=()=>pointerStart=null;svg.addEventListener('pointerup',release);svg.addEventListener('pointercancel',release);
     $('map-zoom-in').onclick=()=>{zoom=Math.min(4,zoom*1.6);applyZoom();};
     $('map-zoom-out').onclick=()=>{zoom=Math.max(1,zoom/1.6);applyZoom();};
     $('map-reset').onclick=()=>{zoom=1;focusCenter=[550,275];selected='';hovered='';$('map-country').value='';applyZoom();onSelect('');overview();};
     $('map-country').onchange=e=>{const code=e.target.value;if(code){focusCenter=byCode.get(code).center;select(code);}else{selected='';hovered='';onSelect('');overview();}};
     details.addEventListener('click',e=>{const button=e.target.closest('[data-view-country],[data-focus-code]');if(!button)return;const code=button.dataset.viewCountry||button.dataset.focusCode;select(code);if(button.dataset.viewCountry)document.querySelector('.directory').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});});
-    applyZoom();host.setAttribute('aria-busy','false');host.dataset.ready='true';
+    applyZoom(false);host.setAttribute('aria-busy','false');host.dataset.ready='true';
     return {update(nextRecords,filterCountry){
       records=nextRecords;summary=window.ConferenceCore.countrySummary(people,records);
       const active=[...summary.values()].filter(g=>g.attending.length),priority=[...summary.values()].filter(g=>g.priority.length);

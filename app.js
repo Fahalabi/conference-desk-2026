@@ -13,7 +13,20 @@
   let records=C.initialRecords(people), pending=[], backend=false, ready=false, saving=false, saveTimer, toastTimer, lastBackup=null, storageFailed=false, cacheDamaged=false, fatal=false;
   const expanded=new Set();
   const filters={search:'',country:'',attendance:'',priority:'',completion:''};
-  let incomingBackup=null,drawerPanel='';
+  let incomingBackup=null,drawerPanel='',drawerVisible=false,drawerMotion=null,lastMapState='';
+  const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
+  const easing='cubic-bezier(.22,.8,.25,1)';
+  const cardViews=new Map(),groupViews=new Map(),noteMotions=new WeakMap();
+  const animations=new Set();
+  let visibleIds=new Set();
+  function animate(node,frames,duration=240){
+    if(reducedMotion.matches||!node.animate)return null;
+    const animation=node.animate(frames,{duration,easing});animations.add(animation);
+    const release=()=>animations.delete(animation);
+    animation.addEventListener('finish',release,{once:true});animation.addEventListener('cancel',release,{once:true});
+    return animation;
+  }
+  reducedMotion.addEventListener('change',()=>{if(reducedMotion.matches)for(const animation of [...animations])animation.finish();});
   const world=window.ConferenceWorld?.create({people,onSelect:country=>{
     filters.country=country;filters.search='';filters.attendance='';filters.priority='';filters.completion='';
     $('search').value='';renderAll();
@@ -90,17 +103,69 @@
       <div class="arrangements">${[['visa','Visa'],['flight','Flight'],['hotel','Hotel']].map(([key,label])=>`<label class="arrangement"><input type="checkbox" data-action="arrangement" data-field="${key}" ${r[key]?'checked':''} aria-label="${label} complete for ${esc(fullName)}"><span>${label}</span></label>`).join('')}</div></div>
       <details class="notes" ${expanded.has(p.id)?'open':''}><summary><span>Notes <span class="note-count">${r.notes.length?`(${r.notes.length})`:''}${r.draft?' · draft':''}</span></span><span class="chevron" aria-hidden="true">⌄</span></summary><div class="notes-content"><div class="note-list">${r.notes.length?r.notes.map(n=>noteHtml(p,n)).join(''):'<p class="note-empty">Keep the details you want to remember.</p>'}</div><div class="note-compose"><textarea data-action="draft" placeholder="Add a note or follow-up…" aria-label="New note for ${esc(fullName)}" maxlength="20000">${esc(r.draft)}</textarea><div class="compose-bottom"><span>Draft saves automatically</span><button class="button" data-action="add-note">+ Add note</button></div></div></div></details></article>`;
   }
+  function element(html){const template=document.createElement('template');template.innerHTML=html;return template.content.firstElementChild;}
+  // Preserve existing controls and their focus/caret instead of replacing every card.
+  function patchNode(current,next){
+    if(current.nodeType!==next.nodeType||current.nodeName!==next.nodeName||
+      (current.nodeType===1&&current.getAttribute('data-note')!==next.getAttribute('data-note'))){current.replaceWith(next);return;}
+    if(current.nodeType===3){if(current.nodeValue!==next.nodeValue)current.nodeValue=next.nodeValue;return;}
+    if(current.nodeType!==1)return;
+    const movingNotes=noteMotions.has(current);
+    for(const attribute of [...current.attributes]){
+      if(movingNotes&&['open','style'].includes(attribute.name))continue;
+      if(!next.hasAttribute(attribute.name))current.removeAttribute(attribute.name);
+    }
+    for(const attribute of next.attributes){
+      if(movingNotes&&attribute.name==='open')continue;
+      if(current.getAttribute(attribute.name)!==attribute.value)current.setAttribute(attribute.name,attribute.value);
+    }
+    if(current instanceof HTMLInputElement&&current.checked!==next.checked)current.checked=next.checked;
+    if(current instanceof HTMLTextAreaElement){if(current.value!==next.value)current.value=next.value;return;}
+    const oldChildren=[...current.childNodes],newChildren=[...next.childNodes];
+    for(let i=0;i<Math.max(oldChildren.length,newChildren.length);i++){
+      if(!oldChildren[i])current.append(newChildren[i]);
+      else if(!newChildren[i])oldChildren[i].remove();
+      else patchNode(oldChildren[i],newChildren[i]);
+    }
+  }
+  function orderChildren(parent,nodes){
+    let cursor=parent.firstChild;
+    for(const node of nodes){if(node===cursor)cursor=cursor.nextSibling;else parent.insertBefore(node,cursor);}
+    while(cursor){const next=cursor.nextSibling;cursor.remove();cursor=next;}
+  }
+  function renderDirectory(visible){
+    const groups=[],entering=[],nextIds=new Set(visible.map(p=>p.id));
+    for(const country of countries){
+      const group=visible.filter(p=>p.country===country);if(!group.length)continue;
+      let section=groupViews.get(country);
+      if(!section){
+        section=element(`<section class="country-group"><div class="group-heading"><img class="flag" src="assets/flags/${group[0].countryCode}.svg" alt=""><h3>${esc(country)}</h3><span class="group-count"></span><span class="group-rule"></span></div><div class="cards"></div></section>`);
+        groupViews.set(country,section);
+      }
+      const label=`${group.length} ${group.length===1?'participant':'participants'}`,count=section.querySelector('.group-count');
+      if(count.textContent!==label)count.textContent=label;
+      const cards=group.map(p=>{
+        const key=JSON.stringify([records[p.id],expanded.has(p.id)]);let view=cardViews.get(p.id);
+        if(!view){view={node:element(cardHtml(p)),key};cardViews.set(p.id,view);}
+        else if(view.key!==key){patchNode(view.node,element(cardHtml(p)));view.key=key;}
+        if(!visibleIds.has(p.id))entering.push(view.node);
+        return view.node;
+      });
+      orderChildren(section.querySelector('.cards'),cards);groups.push(section);
+    }
+    orderChildren($('participants'),groups);visibleIds=nextIds;
+    // Only animate cards that actually enter the visible viewport, never all 124.
+    if(!reducedMotion.matches){let count=0;for(const node of entering){const rect=node.getBoundingClientRect();if(rect.bottom>0&&rect.top<innerHeight){animate(node,[{opacity:0,translate:'0 7px'},{opacity:1,translate:'0 0'}],200);if(++count===12)break;}}}
+  }
   function renderAll(){
     renderStats();
     renderDrawer();
-    world?.update(records,filters.country);
+    const mapState=JSON.stringify([filters.country,...people.map(p=>[records[p.id].attending,records[p.id].priority])]);
+    if(mapState!==lastMapState){world?.update(records,filters.country);lastMapState=mapState;}
     const visible=people.filter(p=>C.matches(p,records[p.id],filters));
     $('result-count').textContent=visible.length;
     $('filter-summary').textContent=`${visible.length} of ${people.length} participants · ${filters.country||'Grouped by country'} · Alphabetical order`;
-    $('participants').innerHTML=countries.map(country=>{
-      const group=visible.filter(p=>p.country===country);if(!group.length)return '';
-      return `<section class="country-group"><div class="group-heading"><img class="flag" src="assets/flags/${group[0].countryCode}.svg" alt=""><h3>${esc(country)}</h3><span class="group-count">${group.length} ${group.length===1?'participant':'participants'}</span><span class="group-rule"></span></div><div class="cards">${group.map(cardHtml).join('')}</div></section>`;
-    }).join('');
+    renderDirectory(visible);
     $('empty').hidden=visible.length!==0;
     document.querySelectorAll('.country-link').forEach(b=>{b.classList.toggle('active',b.dataset.country===filters.country);b.setAttribute('aria-pressed',String(b.dataset.country===filters.country));});
     document.querySelectorAll('[data-view]').forEach(b=>b.classList.toggle('active',b.dataset.view==='priority'?filters.priority==='priority':b.dataset.view==='not-attending'?filters.attendance==='not-attending':!filters.priority&&!filters.attendance));
@@ -110,7 +175,18 @@
   function reset(){Object.keys(filters).forEach(k=>filters[k]='');$('search').value='';renderAll();}
   function renderDrawer(){
     const labels={all:'All participants',priority:'Priority','not-attending':'Not attending',countries:'All countries'};
-    $('nav-drawer').hidden=!drawerPanel;
+    const drawer=$('nav-drawer'),opening=!!drawerPanel;
+    if(opening!==drawerVisible){
+      const style=drawerMotion?.playState==='running'?getComputedStyle(drawer):null;
+      const interrupted=style?{opacity:style.opacity,transform:style.transform}:null;
+      drawerVisible=opening;drawerMotion?.cancel();drawerMotion=null;
+      drawer.inert=!opening;drawer.setAttribute('aria-hidden',String(!opening));
+      if(opening){drawer.hidden=false;drawerMotion=animate(drawer,[interrupted||{opacity:0,transform:'translateX(-12px) scale(.985)'},{opacity:1,transform:'translateX(0) scale(1)'}],320);}
+      else{
+        drawerMotion=animate(drawer,[interrupted||{opacity:1,transform:'translateX(0) scale(1)'},{opacity:0,transform:'translateX(-8px) scale(.99)'}],170);
+        if(drawerMotion)drawerMotion.onfinish=()=>{if(!drawerPanel)drawer.hidden=true;};else drawer.hidden=true;
+      }
+    }
     document.querySelectorAll('[data-panel]').forEach(b=>b.setAttribute('aria-expanded',String(b.dataset.panel===drawerPanel)));
     if(!drawerPanel)return;
     $('nav-drawer-title').textContent=labels[drawerPanel];
@@ -151,7 +227,23 @@
   $('search').addEventListener('input',e=>{filters.search=e.target.value;renderAll();});
   for(const key of ['country','attendance','priority','completion'])$('filter-'+key).onchange=e=>{filters[key]=e.target.value;renderAll();};
   $('clear-filters').onclick=reset;$('empty-reset').onclick=reset;
-  $('participants').addEventListener('toggle',e=>{if(e.target.matches('details')){const id=e.target.closest('[data-person]').dataset.person;if(e.target.open)expanded.add(id);else expanded.delete(id);}},true);
+  $('participants').addEventListener('toggle',e=>{if(e.target.matches('details')&&!noteMotions.has(e.target)){const id=e.target.closest('[data-person]').dataset.person;if(e.target.open)expanded.add(id);else expanded.delete(id);}},true);
+  $('participants').addEventListener('click',e=>{
+    const summary=e.target.closest('summary');if(!summary)return;
+    const details=summary.closest('details.notes');if(!details)return;e.preventDefault();
+    const previous=noteMotions.get(details),opening=previous?!previous.opening:!details.open,id=details.closest('[data-person]').dataset.person;
+    const start=details.getBoundingClientRect().height;previous?.animation.cancel();
+    if(opening)expanded.add(id);else expanded.delete(id);
+    details.style.height='';details.style.overflow='';
+    if(reducedMotion.matches){noteMotions.delete(details);details.open=opening;return;}
+    details.open=true;
+    const end=opening?details.getBoundingClientRect().height:summary.getBoundingClientRect().height+1;
+    details.style.overflow='hidden';
+    const animation=animate(details,[{height:start+'px'},{height:end+'px'}],opening?310:230);
+    if(!animation){details.open=opening;details.style.overflow='';return;}
+    noteMotions.set(details,{animation,opening});
+    animation.onfinish=()=>{if(noteMotions.get(details)?.animation!==animation)return;details.open=opening;details.style.height='';details.style.overflow='';noteMotions.delete(details);};
+  });
   $('participants').addEventListener('click',e=>{
     const b=e.target.closest('button[data-action]');if(!b||!ready)return;
     const id=b.closest('[data-person]').dataset.person,r=records[id],action=b.dataset.action;
