@@ -30,23 +30,18 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(server.Store(self.root/'data').state,new.state)
     def test_old_backup_restore_does_not_erase_shahd(self):
         store=server.Store(self.root/'data');legacy={'fh-person':copy.deepcopy(store.state['records']['fh-person'])}
-        store.apply([dict(id='1',kind='set',person='sm-person',field='flight',value=True)])
+        store.state['records']['sm-person']['flight']=True;store.persist(store.state)
         store.apply([dict(id='2',kind='restore',records=legacy)])
         self.assertTrue(store.state['records']['sm-person']['flight'])
-    def test_pr_only_completes_and_reviews(self):
-        store=server.Store(self.root/'data');p='sm-person'
-        note=dict(id='n',text='Original',done=False,createdAt='date',updatedAt='date')
-        store.apply([dict(id='1',kind='note',person=p,note=note)])
-        for op in [dict(kind='set',field='attending',value=False),dict(kind='set',field='visaRequired',value=True),dict(kind='noteText',noteId='n',text='Changed',updatedAt='date'),dict(kind='deleteNote',noteId='n'),dict(kind='restore',records=store.state['records'])]:
-            with self.assertRaises(ValueError):store.apply([{**op,'person':p,'id':'reject','workspace':'PR'}])
-        store.apply([dict(id='2',workspace='PR',kind='set',person=p,field='flight',value=True),dict(id='3',workspace='PR',kind='noteStatus',person=p,noteId='n',field='reviewed',value=True,updatedAt='review')])
-        store.apply([dict(id='4',workspace='SM',kind='noteText',person=p,noteId='n',text='Updated by SM',updatedAt='edit')])
-        n=store.state['records'][p]['notes'][0];self.assertTrue(n['reviewed']);self.assertEqual(n['text'],'Updated by SM')
-        self.assertTrue(server.Store(self.root/'data').state['records'][p]['flight'])
+    def test_archived_and_overview_views_are_read_only(self):
+        store=server.Store(self.root/'data')
+        for workspace in ('SM','PR','OV'):
+            with self.assertRaises(ValueError):store.apply([dict(id='reject',workspace=workspace,kind='set',person='fh-person',field='flight',value=True)])
+        with self.assertRaises(ValueError):store.apply([dict(id='archive',workspace='FH',kind='set',person='sm-person',field='flight',value=True)])
 
     def test_new_cards_persist_and_retries_do_not_duplicate(self):
-        store=server.Store(self.root/'data');p=self.participant('SM');before=copy.deepcopy(store.state['records'])
-        op=dict(id='add',kind='addParticipant',workspace='SM',participant=p,priority=True,flight=True,note='Review arrival')
+        store=server.Store(self.root/'data');p=self.participant('FH');before=copy.deepcopy(store.state['records'])
+        op=dict(id='add',kind='addParticipant',workspace='FH',participant=p,priority=True,flight=True,note='Review arrival')
         state=store.apply([op]);self.assertEqual(len(state['addedParticipants']),1)
         self.assertEqual(store.apply([op]),state)
         loaded=server.Store(self.root/'data');self.assertEqual(loaded.state,state)
@@ -65,8 +60,8 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(len(store.state['addedParticipants']),1)
 
     def test_restore_transfers_new_cards_and_old_backup_preserves_them(self):
-        source=server.Store(self.root/'source');legacy=copy.deepcopy(source.state['records']);p=self.participant('SM')
-        source.apply([dict(id='add',kind='addParticipant',workspace='SM',participant=p,hotel=True,note='Retain')])
+        source=server.Store(self.root/'source');legacy=copy.deepcopy(source.state['records']);p=self.participant('FH')
+        source.apply([dict(id='add',kind='addParticipant',workspace='FH',participant=p,hotel=True,note='Retain')])
         snapshot=source.snapshot();target=server.Store(self.root/'target')
         target.apply([dict(id='restore',kind='restore',workspace='FH',records=snapshot['records'],addedParticipants=snapshot['addedParticipants'])])
         self.assertEqual(target.state['records'],snapshot['records']);self.assertIn(p['id'],target.people)

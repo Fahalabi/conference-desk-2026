@@ -21,12 +21,19 @@ test('Shared views preserve legacy records and waive unneeded visa completion',(
  const restored=C.restoreRecords({a:{...records.a,draft:'legacy draft'}},roster,records);
  assert.equal(restored.a.draft,'legacy draft');assert(restored.b.flight);
 });
-test('PR can review a note without editing its text or participant details',()=>{
+test('Overview and archived workspaces reject every mutation',()=>{
  const records=C.initialRecords(people);records.a.notes=[{id:'n',text:'Original',done:false,reviewed:false,createdAt:'date',updatedAt:'date'}];
- assert.throws(()=>C.apply(records,{workspace:'PR',kind:'set',person:'a',field:'attending',value:false},people));
- C.apply(records,{workspace:'PR',kind:'noteStatus',person:'a',noteId:'n',field:'reviewed',value:true,updatedAt:'review'},people);
- C.apply(records,{workspace:'FH',kind:'noteText',person:'a',noteId:'n',text:'Updated',updatedAt:'edit'},people);
- assert(records.a.notes[0].reviewed);assert.equal(records.a.notes[0].text,'Updated');
+ for(const workspace of ['PR','OV','SM'])for(const op of [{kind:'set',field:'visa',value:true},{kind:'noteStatus',noteId:'n',field:'reviewed',value:true,updatedAt:'date'}])assert.throws(()=>C.apply(records,{...op,workspace,person:'a'},people));
+ C.apply(records,{workspace:'FH',kind:'noteStatus',person:'a',noteId:'n',field:'reviewed',value:true,updatedAt:'review'},people);
+ assert(records.a.notes[0].reviewed);
+});
+test('Contact edits retain IDs, notes and arrangements and survive restoration',()=>{
+ const roster=[{...people[0],email:'before@example.test',countryCode:'fr',owners:['FH']}],records=C.initialRecords(roster);records.a.flight=true;
+ const previous=C.detailsOf(roster[0]),details={...previous,email:'after@example.test',country:'Japan',countryCode:'jp',phones:['+123','+456']};
+ C.apply(records,{workspace:'FH',kind:'editParticipant',person:'a',previous,details},roster);
+ assert.equal(roster[0].id,'a');assert.equal(roster[0].email,details.email);assert(records.a.flight);
+ assert.throws(()=>C.apply(records,{workspace:'FH',kind:'editParticipant',person:'a',previous,details},roster));
+ assert.deepEqual(C.mergePeople([{...roster[0],...previous}],[],{a:details})[0],roster[0]);
 });
 test('Totals exclude non-attending people without destroying completed work',()=>{
  const r=C.initialRecords(people);r.a.visa=true;r.b.flight=true;
