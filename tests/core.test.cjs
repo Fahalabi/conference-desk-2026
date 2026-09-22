@@ -2,6 +2,22 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const C=require('../core.js');
 const people=[{id:'a',firstName:'Mélody',lastName:'Test',email:'a',organization:'Org',country:'France',phones:[],attending:true},{id:'b',firstName:'Other',lastName:'Guest',email:'b',organization:'Org2',country:'Canada',phones:['1234567'],attending:false}];
+test('Shared views preserve legacy records and waive unneeded visa completion',()=>{
+ const roster=people.map((p,i)=>({...p,owners:[i?'SM':'FH'],visaRequired:!i,attending:true}));
+ const records=C.initialRecords(roster);records.b.flight=true;records.b.hotel=true;
+ assert.equal(C.scopePeople(roster,'PR').length,2);assert.equal(C.scopePeople(roster,'SM')[0].id,'b');
+ assert(C.matches(roster[1],records.b,{completion:'complete'}));assert(!C.matches(roster[1],records.b,{completion:'visa-pending'}));
+ assert.equal(C.totals(records,roster).visaRequired,1);
+ const restored=C.restoreRecords({a:{...records.a,draft:'legacy draft'}},roster,records);
+ assert.equal(restored.a.draft,'legacy draft');assert(restored.b.flight);
+});
+test('PR can review a note without editing its text or participant details',()=>{
+ const records=C.initialRecords(people);records.a.notes=[{id:'n',text:'Original',done:false,reviewed:false,createdAt:'date',updatedAt:'date'}];
+ assert.throws(()=>C.apply(records,{workspace:'PR',kind:'set',person:'a',field:'attending',value:false},people));
+ C.apply(records,{workspace:'PR',kind:'noteStatus',person:'a',noteId:'n',field:'reviewed',value:true,updatedAt:'review'},people);
+ C.apply(records,{workspace:'FH',kind:'noteText',person:'a',noteId:'n',text:'Updated',updatedAt:'edit'},people);
+ assert(records.a.notes[0].reviewed);assert.equal(records.a.notes[0].text,'Updated');
+});
 test('Totals exclude non-attending people without destroying completed work',()=>{
  const r=C.initialRecords(people);r.a.visa=true;r.b.flight=true;
  assert.equal(C.totals(r).visa,1);assert.equal(C.totals(r).flight,0);
