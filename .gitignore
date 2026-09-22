@@ -1,5 +1,8 @@
 # Local progress and restore backups must stay off GitHub.
 participants.js
+tools/private-import/
+participants.next.js
+*.deploy
 data/
 tests/.tmp/
 __pycache__/

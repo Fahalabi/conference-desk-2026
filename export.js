@@ -39,10 +39,10 @@
   function workbook(people,records){
     const ordered=[...people].sort((a,b)=>a.country.localeCompare(b.country)||a.lastName.localeCompare(b.lastName)||a.firstName.localeCompare(b.firstName)),participants=[],notes=[];
     for(const p of ordered){
-      const r=records[p.id],complete=['visa','flight','hotel'].filter(k=>r[k]).length;
-      participants.push({values:[p.country,p.firstName,p.lastName,p.email,p.phones.join('\n'),p.organization,r.attending?'Attending':'Not attending',r.priority?'Priority':'Normal',r.visa?'Completed':'Pending',r.flight?'Completed':'Pending',r.hotel?'Completed':'Pending',complete,r.notes.length,r.notes.filter(n=>!n.done).length],style:r.priority?3:2,styles:{6:r.attending?4:3,7:r.priority?3:2,8:r.visa?4:5,9:r.flight?4:5,10:r.hotel?4:5}});
-      for(const n of r.notes)notes.push({values:[p.country,p.firstName,p.lastName,p.email,n.text,n.done?'Completed':'Open',n.createdAt,n.updatedAt],styles:{5:n.done?4:5}});
-      if(r.draft)notes.push({values:[p.country,p.firstName,p.lastName,p.email,r.draft,'Draft','',''],style:5});
+      const r=records[p.id],required=r.visaRequired===false?['flight','hotel']:['visa','flight','hotel'],complete=required.filter(k=>r[k]).length,owner=(p.owners||['FH']).join(', ');
+      participants.push({values:[p.country,p.firstName,p.lastName,p.email,p.phones.join('\n'),p.organization,r.attending?'Attending':'Not attending',r.priority?'Priority':'Normal',r.visaRequired===false?'Not required':r.visa?'Completed':'Pending',r.flight?'Completed':'Pending',r.hotel?'Completed':'Pending',complete,r.notes.length,r.notes.filter(n=>!n.done).length,owner,r.visaRequired===false?'Not required':'Required',p.sourceStatus?.visa||'',p.sourceStatus?.flight||'',p.sourceStatus?.remarks||'',p.contactReview||''],style:r.priority?3:2,styles:{6:r.attending?4:3,7:r.priority?3:2,8:r.visa||r.visaRequired===false?4:5,9:r.flight?4:5,10:r.hotel?4:5}});
+      for(const n of r.notes)notes.push({values:[p.country,p.firstName,p.lastName,p.email,n.text,n.done?'Completed':'Open',n.createdAt,n.updatedAt,n.reviewed?'Reviewed':'Not reviewed',owner],styles:{5:n.done?4:5}});
+      if(r.draft)notes.push({values:[p.country,p.firstName,p.lastName,p.email,r.draft,'Draft','','','',owner],style:5});
     }
     const relns='http://schemas.openxmlformats.org/package/2006/relationships',docrel='http://schemas.openxmlformats.org/officeDocument/2006/relationships';
     return zip({
@@ -51,8 +51,8 @@
       'xl/workbook.xml':declaration+`<workbook xmlns="${ns}" xmlns:r="${docrel}"><bookViews><workbookView/></bookViews><sheets><sheet name="Participants" sheetId="1" r:id="rId1"/><sheet name="Notes" sheetId="2" r:id="rId2"/></sheets></workbook>`,
       'xl/_rels/workbook.xml.rels':declaration+`<Relationships xmlns="${relns}"><Relationship Id="rId1" Type="${docrel}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${docrel}/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="${docrel}/styles" Target="styles.xml"/></Relationships>`,
       'xl/styles.xml':styles,
-      'xl/worksheets/sheet1.xml':sheet(['Country','First name','Last name','Email','Phone numbers','Organization','Attendance','Priority','Visa','Flight','Hotel','Completed arrangements','Total notes','Open notes'],participants,[24,21,24,38,25,42,19,14,16,16,16,22,14,14]),
-      'xl/worksheets/sheet2.xml':sheet(['Country','First name','Last name','Email','Note','Status','Created (UTC)','Updated (UTC)'],notes,[24,21,24,38,85,16,29,29],true)
+      'xl/worksheets/sheet1.xml':sheet(['Country','First name','Last name','Email','Phone numbers','Organization','Attendance','Priority','Visa','Flight','Hotel','Completed arrangements','Total notes','Open notes','Owner','Visa requirement','Source visa status','Source flight status','Source remarks','Contact review'],participants,[24,21,24,38,25,42,19,14,16,16,16,22,14,14,12,19,20,25,50,45]),
+      'xl/worksheets/sheet2.xml':sheet(['Country','First name','Last name','Email','Note','Status','Created (UTC)','Updated (UTC)','Review','Owner'],notes,[24,21,24,38,85,16,29,29,18,12],true)
     });
   }
   window.ConferenceExport={workbook};

@@ -19,7 +19,7 @@
     $('map-country').insertAdjacentHTML('beforeend',[...assigned.entries()].sort((a,b)=>a[1].localeCompare(b[1])).map(([code,country])=>`<option value="${esc(code)}">${esc(country)}</option>`).join(''));
     function overview(){
       if(!records)return;
-      const totals=window.ConferenceCore.totals(records),urgent=[...summary.values()].filter(c=>c.priority.length);
+      const totals=window.ConferenceCore.totals(records,people),urgent=[...summary.values()].filter(c=>c.priority.length);
       details.innerHTML=`<div class="world-overview"><div class="overview-orbit"><span>${totals.attending}</span><small>attending</small></div><h3>Your world of participants</h3><p>Hover or tap a country to see who’s attending.</p>${urgent.length?`<div class="urgency-note"><span class="red-dot"></span>${totals.priority} priority ${totals.priority===1?'person':'people'} across ${urgent.length} ${urgent.length===1?'country':'countries'}</div><div class="priority-country-list">${urgent.map(g=>`<button data-focus-code="${g.code}"><span>${esc(g.country)}</span><strong>${g.priority.length}</strong></button>`).join('')}</div>`:'<div class="calm-note">No priority cards right now.<br>Use the flag on a card to add urgency.</div>'}</div>`;
     }
     function show(code){
@@ -71,12 +71,16 @@
     $('map-country').onchange=e=>{const code=e.target.value;if(code){focusCenter=byCode.get(code).center;select(code);}else{selected='';hovered='';onSelect('');overview();}};
     details.addEventListener('click',e=>{const button=e.target.closest('[data-view-country],[data-focus-code]');if(!button)return;const code=button.dataset.viewCountry||button.dataset.focusCode;select(code);if(button.dataset.viewCountry)document.querySelector('.directory').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});});
     applyZoom(false);host.setAttribute('aria-busy','false');host.dataset.ready='true';
-    return {update(nextRecords,filterCountry){
+    return {update(nextRecords,filterCountry,nextPeople=people){
+      if(nextPeople!==people){people=nextPeople;assigned.clear();people.forEach(p=>assigned.set(p.countryCode,p.country));selected='';hovered='';zoom=1;focusCenter=[550,275];applyZoom(false);}
       records=nextRecords;summary=window.ConferenceCore.countrySummary(people,records);
       const active=[...summary.values()].filter(g=>g.attending.length),priority=[...summary.values()].filter(g=>g.priority.length);
       $('map-active-count').textContent=active.length;$('map-priority-count').textContent=priority.length;
       for(const node of host.querySelectorAll('[data-code]')){
         const code=node.dataset.code,g=summary.get(code),country=g?.country||byCode.get(code).name;
+        if(node.classList.contains('map-point'))node.style.display=g?'':'none';
+        node.setAttribute('role',g?'button':'img');
+        if(g)node.setAttribute('tabindex',node.classList.contains('map-country')&&byCode.get(code).area<75?'-1':'0');else node.removeAttribute('tabindex');
         node.classList.toggle('has-attendees',!!g?.attending.length);node.classList.toggle('is-dim',!g?.attending.length);node.classList.toggle('has-priority',!!g?.priority.length);node.classList.toggle('is-selected',country===filterCountry);
         node.setAttribute('aria-label',`${country}: ${g?.attending.length||0} attending${g?.priority.length?`, ${g.priority.length} priority`:''}`);
         if(node.getAttribute('role')==='button')node.setAttribute('aria-pressed',String(country===filterCountry));

@@ -9,7 +9,10 @@
   const uid=()=>crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)+Math.random().toString(36).slice(2);
   const name=p=>[p.firstName,p.lastName].filter(Boolean).join(' ')||'Name not provided';
   const flag=p=>`<img src="assets/flags/${p.countryCode}.svg" alt="" loading="lazy">`;
-  const countries=[...new Set(people.map(p=>p.country))].sort((a,b)=>a.localeCompare(b));
+  const allCountries=[...new Set(people.map(p=>p.country))].sort((a,b)=>a.localeCompare(b));
+  const workspaces={FH:'FH workspace',SM:'SM workspace',PR:'PR · Combined overview',...window.CONFERENCE_DATA.workspaces};
+  let workspace=new URL(location.href).searchParams.get('workspace')||'FH';if(!workspaces[workspace])workspace='FH';
+  let scopedPeople=C.scopePeople(people,workspace),countries=[...new Set(scopedPeople.map(p=>p.country))].sort((a,b)=>a.localeCompare(b)),serverRevision=-1,refreshing=false;
   let records=C.initialRecords(people), pending=[], backend=false, ready=false, saving=false, saveTimer, toastTimer, lastBackup=null, storageFailed=false, cacheDamaged=false, fatal=false;
   const expanded=new Set();
   const filters={search:'',country:'',attendance:'',priority:'',completion:''};
@@ -61,7 +64,7 @@
       const country=people.find(p=>id==='map-country'?p.countryCode===option.value:p.country===option.value);
       const icon=searchable?(country?flag(country):'<span class="select-world" aria-hidden="true">◎</span>'):'';
       node.innerHTML=`${icon}<span class="select-option-label">${esc(option.textContent)}</span><svg class="select-check" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg>`;
-      list.append(node);return {node,value:option.value,text:option.textContent,country};
+      list.append(node);return {node,value:option.value,text:option.textContent,country,source:option};
     });
     let opened=false,filtered=options,active=-1,typeahead='',typeTimer,positionFrame=0;
     const controller=search||trigger;
@@ -104,8 +107,8 @@
     }
     function open(){
       if(opened||trigger.disabled)return;
-      activePicker?.close();opened=true;activePicker=view;filtered=options;
-      if(search)search.value='';options.forEach(o=>o.node.hidden=false);empty.hidden=true;sync();
+      activePicker?.close();opened=true;activePicker=view;filtered=options.filter(o=>!o.source.hidden);
+      if(search)search.value='';options.forEach(o=>o.node.hidden=o.source.hidden);empty.hidden=true;sync();
       trigger.setAttribute('aria-expanded','true');shell.classList.add('is-open');panel.hidden=false;
       if(topLayer)panel.showPopover();position();
       controller.focus({preventScroll:true});setActive(Math.max(0,filtered.findIndex(o=>o.value===select.value)));
@@ -137,7 +140,7 @@
     trigger.onclick=()=>opened?close():open();trigger.addEventListener('keydown',keydown);search?.addEventListener('keydown',keydown);
     search?.addEventListener('input',()=>{
       const normalize=text=>text.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase();
-      const query=normalize(search.value.trim());filtered=options.filter(o=>normalize(o.text).includes(query));
+      const query=normalize(search.value.trim());filtered=options.filter(o=>!o.source.hidden&&normalize(o.text).includes(query));
       options.forEach(o=>o.node.hidden=!filtered.includes(o));empty.hidden=filtered.length>0;
       setActive(filtered.length?0:-1,false);list.scrollTop=0;position();
     });
@@ -179,7 +182,7 @@
   }
   async function api(path,options={}) {
     const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),8000);
-    try{return await fetch(path,{cache:'no-store',...options,signal:controller.signal});}finally{clearTimeout(timeout);}
+    try{return await fetch(path,{cache:'no-store',...options,headers:{...options.headers,'X-Conference-Roster':'2'},signal:controller.signal});}finally{clearTimeout(timeout);}
   }
   async function flush() {
     if(!backend||saving||!pending.length||fatal)return;
@@ -190,7 +193,7 @@
       const saved=await response.json();if(!response.ok)throw new Error(saved.error||'Could not save the progress file.');
       const acknowledged=new Set(batch.map(o=>o.id));pending=pending.filter(o=>!acknowledged.has(o.id));
       records=C.validateRecords(saved.records,people);for(const op of pending)records=C.apply(records,op,people);
-      cache();status();
+      serverRevision=saved.revision;cache();renderAll();status();
     }catch(error){
       $('save-status').className='save-status pending';$('save-status').lastElementChild.textContent=storageFailed?'Changes need a backup':'Saved in browser · file update pending';
       $('save-error').hidden=false;$('save-error').textContent=`The local progress file could not be updated. ${storageFailed?'Export a backup now.':'Your changes remain in this browser and will retry automatically.'} ${error.message}`;
@@ -199,7 +202,7 @@
   }
   function change(operations,render=true) {
     if(!ready||fatal)return;
-    for(const action of operations){const op={...action,id:uid()};records=C.apply(records,op,people);pending.push(op);}
+    for(const action of operations){const op={...action,id:uid(),workspace};records=C.apply(records,op,people);pending.push(op);}
     // Local-only deployments need no server queue; their authoritative state is the browser cache.
     if(!backend)pending=[];
     cache();status();if(render)renderAll();
@@ -207,24 +210,27 @@
   }
   function setField(person,field,value,render=true){change([{kind:'set',person,field,value}],render);}
   function renderStats(){
-    const t=C.totals(records);
+    const t=C.totals(records,scopedPeople);
     $('stat-total').textContent=t.total;$('nav-total').textContent=t.total;$('nav-priority').textContent=t.priority;$('nav-absent').textContent=t.notAttending;
     $('stat-attendance').textContent=`${t.attending} attending · ${t.notAttending} not attending`;
     document.querySelectorAll('.attending-total').forEach(el=>el.textContent=t.attending);
-    for(const key of ['visa','flight','hotel']){$('stat-'+key).textContent=t[key];$('meter-'+key).style.width=(t.attending?t[key]/t.attending*100:0)+'%';$('remaining-'+key).textContent=`${t.attending-t[key]} remaining`;}
+    $('visa-total').textContent=t.visaRequired;
+    for(const key of ['visa','flight','hotel']){const total=key==='visa'?t.visaRequired:t.attending;$('stat-'+key).textContent=t[key];$('meter-'+key).style.width=(total?t[key]/total*100:0)+'%';$('remaining-'+key).textContent=`${total-t[key]} remaining`;}
   }
   function noteHtml(p,n){
-    return `<div class="note-row ${n.done?'completed':''}" data-note="${esc(n.id)}"><input type="checkbox" data-action="note-done" ${n.done?'checked':''} aria-label="Mark note complete for ${esc(name(p))}"><div class="note-main"><textarea data-action="note-text" aria-label="Edit note for ${esc(name(p))}" maxlength="20000">${esc(n.text)}</textarea><span class="note-time">${esc(new Date(n.createdAt).toLocaleDateString(undefined,{day:'numeric',month:'short'}))}</span></div><button class="note-delete" data-action="note-delete" aria-label="Delete note for ${esc(name(p))}" title="Delete note">×</button></div>`;
+    return `<div class="note-row ${n.done?'completed':''}" data-note="${esc(n.id)}"><input type="checkbox" data-action="note-done" ${n.done?'checked':''} aria-label="Mark note complete for ${esc(name(p))}"><div class="note-main"><textarea data-action="note-text" aria-label="Edit note for ${esc(name(p))}" ${workspace==='PR'?'readonly':''} maxlength="20000">${esc(n.text)}</textarea><div class="note-footer"><span class="note-time">${esc(new Date(n.createdAt).toLocaleDateString(undefined,{day:'numeric',month:'short'}))}${n.done?' · Done':''}</span><label class="note-reviewed"><input type="checkbox" data-action="note-reviewed" ${n.reviewed?'checked':''} aria-label="Mark note reviewed for ${esc(name(p))}">Reviewed</label></div></div><button class="note-delete" data-action="note-delete" ${workspace==='PR'?'hidden':''} aria-label="Delete note for ${esc(name(p))}" title="Delete note">×</button></div>`;
   }
   function cardHtml(p){
-    const r=records[p.id], fullName=name(p), done=['visa','flight','hotel'].filter(k=>r[k]).length;
-    return `<article class="card ${r.priority?'priority':''} ${r.attending?'':'not-attending'}" data-person="${esc(p.id)}" aria-label="${esc(fullName)}"><div class="card-body"><div class="card-top"><div><h4 class="person-name">${esc(fullName)}</h4><div class="organization">${esc(p.organization)}</div></div><button class="priority-button" data-action="priority" aria-pressed="${r.priority}" aria-label="Priority for ${esc(fullName)}" title="${r.priority?'Remove priority':'Mark as priority'}">⚑</button></div>
-      <div class="card-country">${flag(p)}<span>${esc(p.country)}</span></div>
-      <div class="contact-line"><svg viewBox="0 0 18 18" aria-hidden="true"><rect x="2" y="4" width="14" height="10" rx="2"/><path d="m3 5 6 5 6-5"/></svg><a href="mailto:${esc(p.email)}">${esc(p.email)}</a></div>
+    const r=records[p.id], fullName=name(p),required=r.visaRequired?['visa','flight','hotel']:['flight','hotel'],done=required.filter(k=>r[k]).length,pr=workspace==='PR';
+    const source=p.sourceStatus,reference=source?[source.visa&&'Visa: '+source.visa,source.flight&&'Flight: '+source.flight,source.remarks].filter(Boolean).join(' · '):'';
+    return `<article class="card ${r.priority?'priority':''} ${r.attending?'':'not-attending'}" data-person="${esc(p.id)}" aria-label="${esc(fullName)}"><div class="card-body"><div class="card-top"><div><h4 class="person-name">${esc(fullName)}</h4><div class="organization">${esc(p.organization||'Organization not provided')}</div></div><div class="card-actions"><button class="visa-requirement ${r.visaRequired?'required':'waived'}" data-action="visa-required" aria-pressed="${r.visaRequired}" aria-label="Visa requirement for ${esc(fullName)}: ${r.visaRequired?'required':'not required'}" ${pr?'disabled':''}><i></i>${r.visaRequired?'Visa required':'Not required'}</button><button class="priority-button" data-action="priority" aria-pressed="${r.priority}" aria-label="Priority for ${esc(fullName)}" ${pr?'disabled':''} title="${r.priority?'Remove priority':'Mark as priority'}">⚑</button></div></div>
+      <div class="card-country">${flag(p)}<span>${esc(p.country)}</span><span class="owner-tag">${C.owners(p).map(esc).join(' · ')}</span></div>
+      ${p.contactReview?`<p class="contact-review">${esc(p.contactReview)}</p>`:''}
+      <div class="contact-line"><svg viewBox="0 0 18 18" aria-hidden="true"><rect x="2" y="4" width="14" height="10" rx="2"/><path d="m3 5 6 5 6-5"/></svg>${p.email?`<a href="mailto:${esc(p.email)}">${esc(p.email)}</a>`:'<span class="missing">Email not provided</span>'}</div>
       <div class="contact-line"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M4 2h3l1 4-2 1c1 3 2 4 5 5l1-2 4 1v3c0 2-3 2-5 1C6 13 3 9 2 5c0-2 0-3 2-3Z"/></svg><span class="contact-phones">${p.phones.length?p.phones.map(phone=>`<a href="tel:${esc(phone.replace(/[^+\d]/g,''))}">${esc(phone)}</a>`).join(''):'<span class="missing">Phone not provided</span>'}</span></div>
-      <div class="attendance-row"><button class="attendance ${r.attending?'':'off'}" data-action="attendance" aria-pressed="${r.attending}" aria-label="Attendance for ${esc(fullName)}: ${r.attending?'attending':'not attending'}" title="Click to change attendance"><i></i>${r.attending?'Attending':'Not attending'}<span aria-hidden="true">⌄</span></button><span class="completion-count ${done===3?'done':''}">${done}/3 complete</span></div>
-      <div class="arrangements">${[['visa','Visa'],['flight','Flight'],['hotel','Hotel']].map(([key,label])=>`<label class="arrangement"><input type="checkbox" data-action="arrangement" data-field="${key}" ${r[key]?'checked':''} aria-label="${label} complete for ${esc(fullName)}"><span>${label}</span></label>`).join('')}</div></div>
-      <details class="notes" ${expanded.has(p.id)?'open':''}><summary><span>Notes <span class="note-count">${r.notes.length?`(${r.notes.length})`:''}${r.draft?' · draft':''}</span></span><span class="chevron" aria-hidden="true">⌄</span></summary><div class="notes-content"><div class="note-list">${r.notes.length?r.notes.map(n=>noteHtml(p,n)).join(''):'<p class="note-empty">Keep the details you want to remember.</p>'}</div><div class="note-compose"><textarea data-action="draft" placeholder="Add a note or follow-up…" aria-label="New note for ${esc(fullName)}" maxlength="20000">${esc(r.draft)}</textarea><div class="compose-bottom"><span>Draft saves automatically</span><button class="button" data-action="add-note">+ Add note</button></div></div></div></details></article>`;
+      <div class="attendance-row"><button class="attendance ${r.attending?'':'off'}" data-action="attendance" ${pr?'disabled':''} aria-pressed="${r.attending}" aria-label="Attendance for ${esc(fullName)}: ${r.attending?'attending':'not attending'}" title="Click to change attendance"><i></i>${r.attending?'Attending':'Not attending'}<span aria-hidden="true">⌄</span></button><span class="completion-count ${done===required.length?'done':''}">${done}/${required.length} complete</span></div>
+      <div class="arrangements">${[['visa','Visa'],['flight','Flight'],['hotel','Hotel']].map(([key,label])=>`<label class="arrangement"><input type="checkbox" data-action="arrangement" data-field="${key}" ${r[key]?'checked':''} ${key==='visa'&&!r.visaRequired?'disabled':''} aria-label="${label} complete for ${esc(fullName)}"><span>${key==='visa'&&!r.visaRequired?'Visa · N/A':label}</span></label>`).join('')}</div></div>
+      <details class="notes" ${expanded.has(p.id)?'open':''}><summary><span>Notes <span class="note-count">${r.notes.length?`(${r.notes.length})`:''}${r.draft?' · draft':''}</span></span><span class="chevron" aria-hidden="true">⌄</span></summary><div class="notes-content">${reference?`<div class="source-reference"><strong>From the working list</strong><p>${esc(reference)}</p></div>`:''}<div class="note-list">${r.notes.length?r.notes.map(n=>noteHtml(p,n)).join(''):'<p class="note-empty">No follow-up notes yet.</p>'}</div><div class="note-compose" ${pr?'hidden':''}><textarea data-action="draft" placeholder="Add a note or follow-up…" aria-label="New note for ${esc(fullName)}" maxlength="20000">${esc(r.draft)}</textarea><div class="compose-bottom"><span>Draft saves automatically</span><button class="button" data-action="add-note">+ Add note</button></div></div>${pr&&r.draft?`<p class="shared-draft"><strong>Draft</strong> ${esc(r.draft)}</p>`:''}</div></details></article>`;
   }
   function element(html){const template=document.createElement('template');template.innerHTML=html;return template.content.firstElementChild;}
   // Preserve existing controls and their focus/caret instead of replacing every card.
@@ -268,7 +274,7 @@
       const label=`${group.length} ${group.length===1?'participant':'participants'}`,count=section.querySelector('.group-count');
       if(count.textContent!==label)count.textContent=label;
       const cards=group.map(p=>{
-        const key=JSON.stringify([records[p.id],expanded.has(p.id)]);let view=cardViews.get(p.id);
+        const key=JSON.stringify([records[p.id],expanded.has(p.id),workspace]);let view=cardViews.get(p.id);
         if(!view){view={node:element(cardHtml(p)),key};cardViews.set(p.id,view);}
         else if(view.key!==key){patchNode(view.node,element(cardHtml(p)));view.key=key;}
         if(!visibleIds.has(p.id))entering.push(view.node);
@@ -283,11 +289,11 @@
   function renderAll(){
     renderStats();
     renderDrawer();
-    const mapState=JSON.stringify([filters.country,...people.map(p=>[records[p.id].attending,records[p.id].priority])]);
-    if(mapState!==lastMapState){world?.update(records,filters.country);lastMapState=mapState;}
-    const visible=people.filter(p=>C.matches(p,records[p.id],filters));
+    const mapState=JSON.stringify([workspace,filters.country,...scopedPeople.map(p=>[records[p.id].attending,records[p.id].priority])]);
+    if(mapState!==lastMapState){world?.update(records,filters.country,scopedPeople);lastMapState=mapState;}
+    const visible=scopedPeople.filter(p=>C.matches(p,records[p.id],filters));
     $('result-count').textContent=visible.length;
-    $('filter-summary').textContent=`${visible.length} of ${people.length} participants · ${filters.country||'Grouped by country'} · Alphabetical order`;
+    $('filter-summary').textContent=`${visible.length} of ${scopedPeople.length} participants · ${filters.country||'Grouped by country'} · ${workspace}`;
     renderDirectory(visible);
     $('empty').hidden=visible.length!==0;
     document.querySelectorAll('.country-link').forEach(b=>{b.classList.toggle('active',b.dataset.country===filters.country);b.setAttribute('aria-pressed',String(b.dataset.country===filters.country));});
@@ -316,7 +322,7 @@
     $('nav-drawer-title').textContent=labels[drawerPanel];
     $('country-nav').hidden=drawerPanel!=='countries';$('drawer-people').hidden=drawerPanel==='countries';
     if(drawerPanel==='countries'){$('drawer-count').textContent=`${countries.length} countries · Choose a group to view its cards`;return;}
-    const group=people.filter(p=>drawerPanel==='priority'?records[p.id].priority:drawerPanel==='not-attending'?!records[p.id].attending:true);
+    const group=scopedPeople.filter(p=>drawerPanel==='priority'?records[p.id].priority:drawerPanel==='not-attending'?!records[p.id].attending:true);
     $('drawer-count').textContent=`${group.length} ${group.length===1?'participant':'participants'} · Select a person to open their card`;
     $('drawer-people').innerHTML=group.length?group.map(p=>`<button class="drawer-person" data-jump-person="${esc(p.id)}">${flag(p)}<span><strong>${esc(name(p))}</strong><small>${esc(p.country)}</small></span>${records[p.id].priority?'<i class="red-dot" aria-label="Priority"></i>':''}</button>`).join(''):'<p class="drawer-empty">No participants in this view yet.</p>';
   }
@@ -339,8 +345,8 @@
     const a=document.createElement('a');a.href=url;a.download=`${prefix}-${new Date().toISOString().replace(/[:.]/g,'-')}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);
     lastBackup=data.exportedAt;cache();toast('Backup download started. Keep it somewhere safe.');
   }
-  $('country-nav').innerHTML=`<button class="country-link active" data-country="" aria-pressed="true">All countries <span class="country-count">124</span></button>`+countries.map(c=>{const group=people.filter(p=>p.country===c);return `<button class="country-link" data-country="${esc(c)}" aria-pressed="false">${flag(group[0])}<span>${esc(c)}</span><span class="country-count">${group.length}</span></button>`;}).join('');
-  $('filter-country').insertAdjacentHTML('beforeend',countries.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join(''));
+  $('country-nav').innerHTML=`<button class="country-link active" data-country="" aria-pressed="true">All countries <span class="country-count">${people.length}</span></button>`+allCountries.map(c=>{const group=people.filter(p=>p.country===c);return `<button class="country-link" data-country="${esc(c)}" aria-pressed="false">${flag(group[0])}<span>${esc(c)}</span><span class="country-count">${group.length}</span></button>`;}).join('');
+  $('filter-country').insertAdjacentHTML('beforeend',allCountries.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join(''));
   $('country-nav').addEventListener('click',e=>{const b=e.target.closest('[data-country]');if(!b)return;Object.keys(filters).forEach(k=>filters[k]='');$('search').value='';filters.country=b.dataset.country;closeDrawer(true);renderAll();document.querySelector('.directory').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});});
   document.querySelectorAll('[data-panel]').forEach(b=>b.onclick=()=>{
     if(drawerPanel===b.dataset.panel){closeDrawer();return;}
@@ -370,10 +376,11 @@
     animation.onfinish=()=>{if(noteMotions.get(details)?.animation!==animation)return;details.open=opening;details.style.height='';details.style.overflow='';noteMotions.delete(details);};
   });
   $('participants').addEventListener('click',e=>{
-    const b=e.target.closest('button[data-action]');if(!b||!ready)return;
+    const b=e.target.closest('button[data-action]');if(!b||!ready||workspace==='PR')return;
     const id=b.closest('[data-person]').dataset.person,r=records[id],action=b.dataset.action;
     if(action==='priority')setField(id,'priority',!r.priority);
     if(action==='attendance')setField(id,'attending',!r.attending);
+    if(action==='visa-required')setField(id,'visaRequired',!r.visaRequired);
     if(action==='add-note'){
       const text=r.draft.trim();if(!text){toast('Write a note first.');return;}expanded.add(id);
       const date=new Date().toISOString();change([{kind:'note',person:id,note:{id:uid(),text,done:false,createdAt:date,updatedAt:date}},{kind:'set',person:id,field:'draft',value:''}]);
@@ -386,33 +393,33 @@
   $('participants').addEventListener('change',e=>{
     const el=e.target,id=el.closest('[data-person]')?.dataset.person;if(!id||!ready)return;
     if(el.dataset.action==='arrangement')setField(id,el.dataset.field,el.checked);
-    if(el.dataset.action==='note-done'){
+    if(['note-done','note-reviewed'].includes(el.dataset.action)){
       const n=records[id].notes.find(n=>n.id===el.closest('[data-note]').dataset.note);
-      change([{kind:'note',person:id,note:{...n,done:el.checked,updatedAt:new Date().toISOString()}}]);
+      change([{kind:'noteStatus',person:id,noteId:n.id,field:el.dataset.action==='note-done'?'done':'reviewed',value:el.checked,updatedAt:new Date().toISOString()}]);
     }
   });
   $('participants').addEventListener('input',e=>{
-    const el=e.target,id=el.closest('[data-person]')?.dataset.person;if(!id||!ready)return;
+    const el=e.target,id=el.closest('[data-person]')?.dataset.person;if(!id||!ready||workspace==='PR')return;
     if(el.dataset.action==='draft')setField(id,'draft',el.value,false);
     if(el.dataset.action==='note-text'){
       const n=records[id].notes.find(n=>n.id===el.closest('[data-note]').dataset.note);
-      change([{kind:'note',person:id,note:{...n,text:el.value,updatedAt:new Date().toISOString()}}],false);
+      change([{kind:'noteText',person:id,noteId:n.id,text:el.value,updatedAt:new Date().toISOString()}],false);
     }
   });
   $('participants').addEventListener('keydown',e=>{if(e.target.dataset.action==='draft'&&(e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();e.target.closest('.note-compose').querySelector('button').click();}});
   $('export-data').onclick=()=>{
     if(!ready||fatal){toast('Wait for your saved progress to load before exporting.');return;}
     try{
-      const url=URL.createObjectURL(window.ConferenceExport.workbook(people,records)),a=document.createElement('a');
-      a.href=url;a.download=`conference-participants-${new Date().toISOString().replace(/[:.]/g,'-')}.xlsx`;a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);
-      toast(`Excel export started · All ${people.length} participants, notes and drafts included.`);
+      const url=URL.createObjectURL(window.ConferenceExport.workbook(scopedPeople,records)),a=document.createElement('a');
+      a.href=url;a.download=`conference-${workspace}-participants-${new Date().toISOString().replace(/[:.]/g,'-')}.xlsx`;a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);
+      toast(`Excel export started · All ${scopedPeople.length} participants in ${workspace}, notes and drafts included.`);
     }catch{toast('Excel export could not be created. Please try again.');}
   };
   $('help-export').onclick=()=>downloadBackup();
   $('restore-backup').onclick=()=>$('backup-file').click();
   $('backup-file').onchange=async e=>{
     const file=e.target.files[0];if(!file)return;
-    try{if(file.size>12000000)throw new Error('Backup is too large.');const value=JSON.parse(await file.text());if(value.datasetId!==C.DATASET||value.schemaVersion!==1)throw new Error('This is not a Conference Desk backup for your participant list.');incomingBackup=C.validateRecords(value.records,people);$('restore-summary').textContent=`This backup contains ${Object.values(incomingBackup).reduce((sum,r)=>sum+r.notes.length,0)} notes and progress for ${people.length} participants.`;$('confirm-dialog').showModal();}
+    try{if(workspace==='PR')throw new Error('Switch to FH or SM to restore a backup.');if(file.size>12000000)throw new Error('Backup is too large.');const value=JSON.parse(await file.text());if(value.datasetId!==C.DATASET||value.schemaVersion!==1)throw new Error('This is not a Conference Desk backup for your participant list.');C.restoreRecords(value.records,people,records);incomingBackup=value.records;$('restore-summary').textContent=`This backup will restore ${Object.keys(value.records).length} participants. Records outside the backup will be preserved.`;$('confirm-dialog').showModal();}
     catch(error){toast('Backup could not be loaded: '+error.message);}finally{e.target.value='';}
   };
   $('cancel-restore').onclick=()=>{$('confirm-dialog').close();incomingBackup=null;};
@@ -420,16 +427,21 @@
   $('saving-help').onclick=()=>{$('storage-explanation').textContent=backend?'This local version saves to your browser and to a progress file on this computer. The indicator at the top confirms when the file is saved.':'This version saves in this browser on this device. Clearing site data removes that browser copy. Export backups regularly. A GitHub Pages version will also use browser storage until a shared database is added.';$('help-dialog').showModal();};
   window.addEventListener('pagehide',()=>{cache();if(!fatal&&backend&&pending.length)fetch('api/actions',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','X-Conference-Client':'local-dashboard'},body:JSON.stringify({datasetId:C.DATASET,operations:pending.slice(0,500)})}).catch(()=>{});});
   window.addEventListener('online',flush);
-  window.addEventListener('focus',async()=>{if(!ready||!backend||pending.length||saving||fatal)return;try{const response=await api('api/state');if(response.ok){const saved=await response.json();if(pending.length||saving)return;records=C.validateRecords(saved.records,people);cache();renderAll();status();}}catch{}});
+  async function refreshShared(){
+    if(!ready||!backend||pending.length||saving||fatal||refreshing||document.hidden)return;
+    refreshing=true;
+    try{const response=await api('api/state');if(response.ok){const saved=await response.json();if(pending.length||saving||saved.revision===serverRevision)return;records=C.validateRecords(saved.records,people);serverRevision=saved.revision;cache();renderAll();status();}}catch{}finally{refreshing=false;}
+  }
+  window.addEventListener('focus',refreshShared);document.addEventListener('visibilitychange',refreshShared);setInterval(refreshShared,2000);
   window.addEventListener('storage',e=>{if(e.key!==CACHE||backend||pending.length||!e.newValue)return;try{const saved=JSON.parse(e.newValue);records=C.validateRecords(saved.records,people);renderAll();}catch{}});
   async function init(){
     let cached=null;
-    try{const raw=localStorage.getItem(CACHE);if(raw){cached=JSON.parse(raw);records=C.validateRecords(cached.records,people);pending=Array.isArray(cached.pending)?cached.pending:[];lastBackup=cached.lastBackup;}}
+    try{const raw=localStorage.getItem(CACHE);if(raw){cached=JSON.parse(raw);records=C.restoreRecords(cached.records,people);pending=Array.isArray(cached.pending)?cached.pending:[];lastBackup=cached.lastBackup;}}
     catch{cacheDamaged=true;}
     if(location.protocol!=='file:'){
       try{
         const response=await api('api/state');
-        if(response.ok){const saved=await response.json();if(saved.datasetId!==C.DATASET)throw new Error('Unexpected save service.');backend=true;const base=C.validateRecords(saved.records,people);
+        if(response.ok){const saved=await response.json();if(saved.datasetId!==C.DATASET)throw new Error('Unexpected save service.');backend=true;serverRevision=saved.revision;const base=C.validateRecords(saved.records,people);
           // Recover an existing browser copy if a new, empty local progress directory is used.
           if(saved.revision===0&&cached&&!cacheDamaged&&JSON.stringify(records)!==JSON.stringify(C.initialRecords(people))){pending=[{id:uid(),kind:'restore',records}];}
           records=base;for(const op of pending)records=C.apply(records,op,people);cacheDamaged=false;
@@ -446,5 +458,23 @@
     if(fatal)$('participants').querySelectorAll('button,input,textarea').forEach(el=>el.disabled=true);
     if(!fatal)cache();status();flush();
   }
-  init();
+  function updateWorkspace(){
+    scopedPeople=C.scopePeople(people,workspace);countries=[...new Set(scopedPeople.map(p=>p.country))].sort((a,b)=>a.localeCompare(b));
+    const countrySet=new Set(countries),codeSet=new Set(scopedPeople.map(p=>p.countryCode));
+    for(const option of $('filter-country').options)option.hidden=!!option.value&&!countrySet.has(option.value);
+    for(const option of $('map-country').options)option.hidden=!!option.value&&!codeSet.has(option.value);
+    document.querySelectorAll('.country-link').forEach(b=>{const country=b.dataset.country,count=country?scopedPeople.filter(p=>p.country===country).length:scopedPeople.length;b.hidden=!count;b.querySelector('.country-count').textContent=count;});
+    $('workspace-avatar').textContent=workspace;$('workspace-button').setAttribute('aria-label','Switch workspace: '+workspaces[workspace]);
+    $('workspace-name').textContent=workspaces[workspace];$('workspace-intro').textContent=workspace==='PR'?'Both participant lists, together. Update completion and review notes.':workspaces[workspace]+'’s participants, arrangements, and follow-up notes.';
+    $('workspace-footer').textContent=workspaces[workspace]+' · Participant list';$('restore-backup').hidden=workspace==='PR';
+    $('workspace-policy').hidden=workspace!=='PR';document.body.dataset.workspace=workspace;
+    document.querySelectorAll('[data-workspace]').forEach(b=>{b.setAttribute('aria-checked',String(b.dataset.workspace===workspace));b.querySelector('strong').textContent=workspaces[b.dataset.workspace];b.querySelector('.workspace-count').textContent=C.scopePeople(people,b.dataset.workspace).length+' participants';});
+    document.title='Conference Desk · '+workspace;
+  }
+  function closeWorkspace(restore=false){$('workspace-menu').hidden=true;$('workspace-button').setAttribute('aria-expanded','false');if(restore)$('workspace-button').focus();}
+  $('workspace-button').onclick=()=>{const opening=$('workspace-menu').hidden;activePicker?.close();closeDrawer();$('workspace-menu').hidden=!opening;$('workspace-button').setAttribute('aria-expanded',String(opening));if(opening){animate($('workspace-menu'),[{opacity:0,translate:'-5px 6px',scale:'.98'},{opacity:1,translate:'0 0',scale:'1'}],200);$('workspace-menu').querySelector('[aria-checked="true"]').focus();}};
+  $('workspace-menu').onclick=e=>{const b=e.target.closest('[data-workspace]');if(!b)return;workspace=b.dataset.workspace;activePicker?.close();closeWorkspace(true);closeDrawer();Object.keys(filters).forEach(k=>filters[k]='');$('search').value='';expanded.clear();updateWorkspace();const url=new URL(location.href);url.searchParams.set('workspace',workspace);history.replaceState(null,'',url);renderAll();flush();refreshShared();};
+  $('workspace-menu').addEventListener('keydown',e=>{const buttons=[...$('workspace-menu').querySelectorAll('[data-workspace]')],i=buttons.indexOf(document.activeElement);if(e.key==='Escape'){e.preventDefault();closeWorkspace(true);}if(e.key==='ArrowDown'||e.key==='ArrowUp'){e.preventDefault();buttons[(i+(e.key==='ArrowDown'?1:-1)+buttons.length)%buttons.length].focus();}if(e.key==='Tab')closeWorkspace(true);});
+  document.addEventListener('pointerdown',e=>{if(!e.target.closest('#workspace-button,#workspace-menu'))closeWorkspace();});
+  updateWorkspace();init();
 })();

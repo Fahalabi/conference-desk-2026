@@ -13,12 +13,16 @@ This public repository contains application code and an **empty participant temp
 - Foldable notes with editable to-do items, completion checkboxes, deletion undo, and autosaved drafts.
 - Search and combined country, attendance, priority, and completion filters.
 - All dropdowns use matching glass menus, with searchable country lists, flags, selected checkmarks, keyboard navigation, and placement that adapts to the screen.
+- The bottom-left avatar switches between **FH**, **SM**, and **PR**. FH and SM show their assigned guests; PR combines both by country. Cards display their owner, and the map, filters, counts, navigation, and Excel export follow the selected workspace.
+- Workspaces share one saved record per guest. Visible tabs refresh from the local server every two seconds and when focused. PR can change Visa/Flight/Hotel completion and mark notes reviewed or done; other card edits and restore are available in FH and SM.
+- A green/orange visa requirement button distinguishes not-required from required. Visa completion totals include only attending guests who require a visa, and waived visas are excluded from the card’s required-arrangement count.
+- Pasted working-list statuses remain reference text, separate from completion checkboxes. Uploaded documents do not automatically mean a visa or flight booking is complete.
 - Soft focus highlights, fluid drawer and note transitions, eased map zoom, and subtle button feedback. Card updates preserve the focused control and note input. The operating system's reduced-motion preference is respected.
 - **Export Data** downloads a real `.xlsx` workbook with Participants and Notes worksheets, frozen headings, and filters. It includes the complete list, statuses, notes, and drafts regardless of the current screen filters.
 
 ## Run locally
 
-First, place your private `participants.js` file alongside `index.html`. This file is ignored by Git. When moving an existing dashboard, also copy its private `data/` folder locally so its saved progress remains available. Neither file should be uploaded to GitHub.
+First, place your private `participants.js` file alongside `index.html`. This file is ignored by Git. When moving an existing dashboard, also copy its private `data/` folder locally so its saved progress remains available. Neither file should be uploaded to GitHub. Optional private `workspaces` labels supply the names shown for FH and SM; generic labels appear when none are supplied.
 
 For an empty installation, copy `participants.example.js` to `participants.js` and populate it with your own private participant list. The public example contains no real or sample contacts.
 
@@ -44,7 +48,9 @@ Local progress, backups, spreadsheets, logs, and test output are excluded from t
 
 ## Participant data
 
-Your local `participants.js` supplies the participant list. Each record has a stable email-based `id`, `email`, `firstName`, `lastName`, `organization`, `country`, lower-case `countryCode`, `phones` array, and initial `attending` boolean. Names remain separate from organizations. Missing phones are represented by an empty array.
+Your local `participants.js` supplies the participant list. Each record has a stable `id`, `email`, `firstName`, `lastName`, `organization`, `country`, lower-case `countryCode`, `phones` array, and initial `attending` boolean. Optional fields include `owners` (FH or SM), `visaRequired`, `sourceStatus`, and `contactReview`. Existing records without an owner default to FH. IDs use email where available; missing contacts use stable local IDs. Names remain separate from organizations, and missing contact details stay blank.
+
+When an existing FH roster is extended with SM records, the server preserves the original records and writes a migration backup before saving the expanded list. Restoring a legacy FH-only backup preserves current SM progress. JSON restore backups cover both workspaces; Excel exports cover the currently selected workspace and include ownership, visa requirement, source reference, and note review columns.
 
 Participant files in a public repository or static website are public. A static frontend cannot hide data that it downloads. Keep private contact lists and personal progress outside public version control.
 

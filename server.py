@@ -27,6 +27,8 @@ def validate_records(records, people):
     for pid, r in records.items():
         if not isinstance(r, dict) or any(type(r.get(k)) is not bool for k in BOOL_FIELDS):
             raise ValueError('Invalid status in backup.')
+        if 'visaRequired' in r and type(r['visaRequired']) is not bool:
+            raise ValueError('Invalid visa requirement.')
         if not isinstance(r.get('draft'), str) or len(r['draft']) > 20000:
             raise ValueError('Invalid note draft.')
         notes = r.get('notes')
@@ -39,8 +41,15 @@ def validate_records(records, people):
             if not isinstance(n.get('text'), str) or len(n['text']) > 20000 or type(n.get('done')) is not bool or not all(isinstance(n.get(k), str) for k in ('createdAt','updatedAt')):
                 raise ValueError('Invalid note content.')
             seen.add(n['id'])
-        result[pid] = {**{k:r[k] for k in BOOL_FIELDS}, 'draft':r['draft'], 'notes':[{k:n[k] for k in ('id','text','done','createdAt','updatedAt')} for n in notes]}
+            if 'reviewed' in n and type(n['reviewed']) is not bool:raise ValueError('Invalid note review.')
+        result[pid] = {**{k:r[k] for k in BOOL_FIELDS}, 'visaRequired':r.get('visaRequired',people[pid].get('visaRequired',True)), 'draft':r['draft'], 'notes':[{**{k:n[k] for k in ('id','text','done','createdAt','updatedAt')},'reviewed':n.get('reviewed',False)} for n in notes]}
     return result
+
+def restore_records(incoming, people, current):
+    if isinstance(incoming,dict) and set(incoming)==set(people):
+        return validate_records(incoming,people)
+    legacy={pid:p for pid,p in people.items() if 'FH' in p.get('owners',['FH'])}
+    return {**current,**validate_records(incoming,legacy)}
 
 class Store:
     def __init__(self, directory):
@@ -52,13 +61,26 @@ class Store:
         self.lock = threading.Lock()
         seed = json.loads((ROOT/'participants.js').read_text(encoding='utf-8').removeprefix('window.CONFERENCE_DATA = ').rstrip(';\n'))
         self.people = {p['id']:p for p in seed['participants']}
-        self.state = {'schemaVersion':1,'datasetId':DATASET,'revision':0,'updatedAt':None,'applied':[], 'records':{pid:{'attending':p['attending'],'priority':False,'visa':False,'flight':False,'hotel':False,'notes':[],'draft':''} for pid,p in self.people.items()}}
+        self.state = {'schemaVersion':1,'datasetId':DATASET,'revision':0,'updatedAt':None,'applied':[], 'records':{pid:{'attending':p['attending'],'priority':False,'visaRequired':p.get('visaRequired',True),'visa':False,'flight':False,'hotel':False,'notes':[],'draft':''} for pid,p in self.people.items()}}
         if self.path.exists():
             saved = json.loads(self.path.read_text(encoding='utf-8'))
             if saved.get('datasetId') != DATASET or saved.get('schemaVersion') != 1:
                 raise ValueError('Saved progress format is not recognized. Existing files have been preserved.')
-            saved['records'] = validate_records(saved['records'], self.people)
+            previous=saved['records']
+            saved['records'] = restore_records(previous,self.people,self.state['records'])
+            if previous!=saved['records']:
+                # Keep an exact copy before extending an existing FH progress file.
+                (self.backups/f'pre-shared-roster-{time.time_ns()}.json').write_bytes(self.path.read_bytes())
+                saved['revision']+=1;saved['updatedAt']=now()
+                self.persist(saved)
             self.state = saved
+
+    def persist(self,state):
+        temp=self.directory/'progress.tmp'
+        with temp.open('w',encoding='utf-8') as handle:
+            json.dump(state,handle,ensure_ascii=False,indent=2)
+            handle.flush();os.fsync(handle.fileno())
+        os.replace(temp,self.path)
 
     def snapshot(self):
         with self.lock:
@@ -77,8 +99,10 @@ class Store:
                 if op['id'] in applied:
                     continue
                 kind=op.get('kind')
+                if op.get('workspace')=='PR' and not (kind=='set' and op.get('field') in ('visa','flight','hotel') or kind=='noteStatus'):
+                    raise ValueError('PR can update completion and note review only.')
                 if kind=='restore':
-                    state['records']=validate_records(op.get('records'),self.people)
+                    state['records']=restore_records(op.get('records'),self.people,state['records'])
                 else:
                     pid=op.get('person')
                     if pid not in self.people:
@@ -86,7 +110,7 @@ class Store:
                     r=state['records'][pid]
                     if kind=='set':
                         field,value=op.get('field'),op.get('value')
-                        if field in BOOL_FIELDS and type(value) is bool or field=='draft' and isinstance(value,str) and len(value)<=20000:
+                        if field in (*BOOL_FIELDS,'visaRequired') and type(value) is bool or field=='draft' and isinstance(value,str) and len(value)<=20000:
                             r[field]=value
                         else:
                             raise ValueError('Invalid field update.')
@@ -98,7 +122,15 @@ class Store:
                         if index is None:
                             r['notes'].append(note)
                         else:
-                            r['notes'][index]=note
+                            r['notes'][index]={**r['notes'][index],**note}
+                    elif kind=='noteText':
+                        note=next((n for n in r['notes'] if n['id']==op.get('noteId')),None)
+                        if note is None or not isinstance(op.get('text'),str) or len(op['text'])>20000 or not isinstance(op.get('updatedAt'),str):raise ValueError('Invalid note text.')
+                        note['text']=op['text'];note['updatedAt']=op['updatedAt']
+                    elif kind=='noteStatus':
+                        note=next((n for n in r['notes'] if n['id']==op.get('noteId')),None)
+                        if note is None or op.get('field') not in ('done','reviewed') or type(op.get('value')) is not bool or not isinstance(op.get('updatedAt'),str):raise ValueError('Invalid note status.')
+                        note[op['field']]=op['value'];note['updatedAt']=op['updatedAt']
                     elif kind=='deleteNote':
                         r['notes']=[n for n in r['notes'] if n['id']!=op.get('noteId')]
                     else:
@@ -115,12 +147,7 @@ class Store:
             if self.path.exists():
                 backup=self.backups/f"progress-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{time.time_ns()}.json"
                 backup.write_bytes(self.path.read_bytes())
-            temp=self.directory/'progress.tmp'
-            with temp.open('w',encoding='utf-8') as handle:
-                json.dump(state,handle,ensure_ascii=False,indent=2)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temp,self.path)
+            self.persist(state)
             self.state=state
             for stale in sorted(self.backups.glob('progress-*.json'))[:-100]:
                 stale.unlink()
@@ -128,6 +155,11 @@ class Store:
 
 def handler_factory(store, port):
     class Handler(BaseHTTPRequestHandler):
+        def client_snapshot(self,state):
+            # Previously open FH tabs can keep saving while they are refreshed.
+            if self.headers.get('X-Conference-Roster')!='2':
+                state['records']={pid:r for pid,r in state['records'].items() if 'FH' in store.people[pid].get('owners',['FH'])}
+            return state
         def log_message(self,*args):
             pass
 
@@ -150,7 +182,7 @@ def handler_factory(store, port):
                 return self.send(403,{'error':'Local access only.'})
             path=unquote(urlparse(self.path).path)
             if path=='/api/state':
-                return self.send(200,store.snapshot())
+                return self.send(200,self.client_snapshot(store.snapshot()))
             file=ROOT/('index.html' if path=='/' else path.lstrip('/'))
             allowed={'index.html','styles.css','liquid.css','app.js','core.js','participants.js','map.js','map-data.js','export.js','favicon.svg'}
             if path.lstrip('/') not in allowed and path!='/' and not path.startswith('/assets/flags/'):
@@ -172,7 +204,7 @@ def handler_factory(store, port):
                 if payload.get('datasetId') != DATASET:
                     raise ValueError('Wrong participant list.')
                 result=store.apply(payload.get('operations'))
-                return self.send(200,result)
+                return self.send(200,self.client_snapshot(result))
             except (ValueError,KeyError,TypeError) as exc:
                 return self.send(400,{'error':str(exc)})
             except OSError:

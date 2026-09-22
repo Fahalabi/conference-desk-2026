@@ -141,3 +141,30 @@ dialog[open]::backdrop{animation:surface-fade 180ms ease both}
 .select-no-results{margin:0;padding:19px 12px;text-align:center;font-size:12px;color:#8d6d56}
 @media(max-width:700px){.select-trigger{font-size:11px;gap:5px}.select-value{gap:5px}.select-value img{width:16px;height:12px}.select-popover{border-radius:19px}.select-option{min-height:44px;font-size:13px}.select-search input{font-size:16px}.map-picker .select-trigger{font-size:12px}}
 @media(forced-colors:active){.select-popover{background:Canvas;border-color:CanvasText}.select-option.is-active{outline:2px solid Highlight;outline-offset:-2px}.select-check{stroke:Highlight}.select-option.is-selected{color:Highlight}.glass-select:has(.select-trigger:focus-visible){outline:2px solid Highlight;outline-offset:2px}}
+
+/* Shared workspaces keep the same glass surfaces and compact icon rail. */
+.workspace-button{position:relative;display:grid;place-items:center;padding:7px 9px 13px;border:0;border-radius:18px;background:transparent;min-width:44px;min-height:48px;color:#9b7153}
+.workspace-button:hover,.workspace-button[aria-expanded="true"]{background:#ffffffa3}
+.workspace-switch-mark{position:absolute;bottom:0;font-size:12px;line-height:12px}
+.workspace-menu{position:fixed;left:112px;bottom:24px;width:310px;max-width:calc(100vw - 92px);z-index:50;padding:16px 10px 9px;border:1px solid white;border-radius:24px;background:linear-gradient(145deg,#fffaf7f7,#f8e9dff5);box-shadow:0 16px 50px #79513926,inset 0 1px 0 white;backdrop-filter:blur(28px)}
+.workspace-menu>.eyebrow{font-size:8px;letter-spacing:1.5px;padding:0 10px 11px;color:#a77957}
+.workspace-menu>button{display:flex;align-items:center;gap:11px;width:100%;padding:13px 10px;border:0;border-radius:15px;background:transparent;text-align:left;color:#76513b}
+.workspace-menu>button:hover,.workspace-menu>button[aria-checked="true"]{background:#edc4a74f}
+.workspace-monogram{display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:linear-gradient(140deg,#e8a271,#bb5817);color:white;font-size:11px;flex-shrink:0;border:1px solid #fff8}
+.workspace-menu [data-workspace="SM"] .workspace-monogram{background:linear-gradient(135deg,#b89983,#927661)}
+.workspace-menu [data-workspace="PR"] .workspace-monogram{background:linear-gradient(135deg,#68625d,#413d3a)}
+.workspace-menu strong{display:block;font-size:12px;font-weight:550}.workspace-count{display:block;font-size:10px;color:#99765d;margin-top:4px}
+.workspace-tick{margin-left:auto;color:#bb5817;opacity:0}.workspace-menu [aria-checked="true"] .workspace-tick{opacity:1}
+.workspace-menu>p{font-size:9px;line-height:1.5;margin:9px 10px 5px;padding-top:11px;border-top:1px solid #dbc1ad52;color:#9a7b65}
+.page-heading .workspace-policy{max-width:570px;font-size:10px;line-height:1.7;color:#967057;margin-top:8px}
+.card-top>div:first-child{min-width:0;flex:1}.card-actions{display:flex;align-items:flex-end;flex-direction:column;gap:9px;flex-shrink:0}
+.visa-requirement{display:flex;align-items:center;gap:5px;white-space:nowrap;padding:6px 8px;border-radius:30px;font-size:9px;font-weight:550;min-height:28px;transition:background-color 180ms ease,box-shadow 180ms ease,transform 200ms var(--motion-ease)}
+.visa-requirement i{width:5px;height:5px;background:currentColor;border-radius:50%}.visa-requirement.required{color:#a64b12;background:#fff0dc;border:1px solid #eab888}
+.visa-requirement.waived{color:#347446;background:#edf6e9;border:1px solid #bed9b5}.visa-requirement:active:not(:disabled){transform:scale(.97)}
+.visa-requirement:disabled,.card-actions .priority-button:disabled,.attendance:disabled{opacity:1;cursor:default}
+.owner-tag{margin-left:auto;display:inline-flex;padding:3px 7px;border-radius:20px;background:#ffffff80;color:#a47a5b;font-size:8px;font-weight:600;letter-spacing:.6px;border:1px solid #fff9}
+.contact-review{font-size:10px;line-height:1.6;color:#a05c2c;background:#ffeddd8c;border:1px solid #edc5a870;border-radius:11px;padding:8px 10px;margin:0 0 12px}
+.source-reference{padding:10px 12px;margin-bottom:12px;background:#ffffff65;border:1px solid #e8d2c057;border-radius:13px;color:#9b795f;font-size:10px;line-height:1.6}.source-reference strong{font-size:9px;font-weight:550;color:#a5714b}.source-reference p{margin:4px 0 0}
+.note-footer{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-top:5px}.note-reviewed{display:flex;align-items:center;gap:5px;font-size:9px;color:#997255;cursor:pointer}.note-reviewed input{margin:0;accent-color:#bb5817;width:13px;height:13px}
+.note-row textarea[readonly]{cursor:default}.shared-draft{font-size:11px;line-height:1.6;color:#98785e;white-space:pre-wrap;overflow-wrap:anywhere}
+@media(max-width:700px){.workspace-menu{left:76px;bottom:16px;width:300px;border-radius:21px}.workspace-menu>button{padding:12px 8px;gap:8px}.workspace-menu strong{font-size:11px}.workspace-monogram{width:33px;height:33px}.card-actions{gap:7px}.visa-requirement{font-size:8px;padding:6px 7px}.card-top{gap:8px}.note-reviewed{min-height:30px}.note-reviewed input{width:16px;height:16px}}
