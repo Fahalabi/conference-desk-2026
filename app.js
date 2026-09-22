@@ -1,15 +1,18 @@
 /* No remote requests, trackers, or third-party runtime dependencies. */
 (() => {
   'use strict';
-  const C=window.ConferenceCore, people=window.CONFERENCE_DATA.participants;
+  const C=window.ConferenceCore,seedPeople=window.CONFERENCE_DATA.participants;
+  let people=[...seedPeople];
   const byId=new Map(people.map(p=>[p.id,p]));
   const CACHE='conference-desk:publishers-2026-farok:v1';
   const $=id=>document.getElementById(id);
   const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const uid=()=>crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)+Math.random().toString(36).slice(2);
   const name=p=>[p.firstName,p.lastName].filter(Boolean).join(' ')||'Name not provided';
-  const flag=p=>`<img src="assets/flags/${p.countryCode}.svg" alt="" loading="lazy">`;
-  const allCountries=[...new Set(people.map(p=>p.country))].sort((a,b)=>a.localeCompare(b));
+  const flag=p=>p.countryCode?`<img src="assets/flags/${p.countryCode}.svg" alt="" loading="lazy">`:'<span class="country-unknown" aria-hidden="true">◎</span>';
+  const countryName=p=>p.country||'Country not provided';
+  const countryCatalog=(window.CONFERENCE_MAP?.countries||[]).filter(c=>/^[a-z]{2}$/.test(c.code)).map(c=>({countryCode:c.code,country:seedPeople.find(p=>p.countryCode===c.code)?.country||c.name})).sort((a,b)=>a.country.localeCompare(b.country));
+  const allCountries=countryCatalog.map(p=>p.country);
   const workspaces={FH:'FH workspace',SM:'SM workspace',PR:'PR · Combined overview',...window.CONFERENCE_DATA.workspaces};
   let workspace=new URL(location.href).searchParams.get('workspace')||'FH';if(!workspaces[workspace])workspace='FH';
   let scopedPeople=C.scopePeople(people,workspace),countries=[...new Set(scopedPeople.map(p=>p.country))].sort((a,b)=>a.localeCompare(b)),serverRevision=-1,refreshing=false;
@@ -43,7 +46,7 @@
     const original=select.parentElement,label=original.querySelector('span');
     const shell=document.createElement('div');shell.className=original.className+' glass-select';
     original.replaceWith(shell);shell.append(...original.childNodes);
-    const id=select.id,searchable=id==='map-country'||id==='filter-country';
+    const id=select.id,searchable=['map-country','filter-country','new-country'].includes(id);
     label.id=id+'-label';select.hidden=true;select.tabIndex=-1;
     const trigger=document.createElement('button');trigger.type='button';trigger.id=id+'-trigger';trigger.className='select-trigger';
     trigger.setAttribute('role','combobox');trigger.setAttribute('aria-haspopup',searchable?'dialog':'listbox');
@@ -58,10 +61,10 @@
     const list=document.createElement('div');list.className='select-options';list.id=id+'-options';list.setAttribute('role','listbox');list.setAttribute('aria-labelledby',label.id);panel.append(list);
     const empty=document.createElement('p');empty.className='select-no-results';empty.textContent='No countries found';empty.setAttribute('role','status');empty.hidden=true;panel.append(empty);
     const search=panel.querySelector('input');search?.setAttribute('aria-controls',list.id);
-    trigger.setAttribute('aria-controls',searchable?panel.id:list.id);document.body.append(panel);
+    trigger.setAttribute('aria-controls',searchable?panel.id:list.id);(select.closest('dialog')||document.body).append(panel);
     const options=[...select.options].map((option,index)=>{
       const node=document.createElement('div');node.id=id+'-option-'+index;node.className='select-option';node.setAttribute('role','option');node.dataset.value=option.value;
-      const country=people.find(p=>id==='map-country'?p.countryCode===option.value:p.country===option.value);
+      const country=countryCatalog.find(p=>id==='map-country'||id==='new-country'?p.countryCode===option.value:p.country===option.value);
       const icon=searchable?(country?flag(country):'<span class="select-world" aria-hidden="true">◎</span>'):'';
       node.innerHTML=`${icon}<span class="select-option-label">${esc(option.textContent)}</span><svg class="select-check" viewBox="0 0 16 16" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg>`;
       list.append(node);return {node,value:option.value,text:option.textContent,country,source:option};
@@ -160,7 +163,7 @@
 
   function cache() {
     if(fatal)return;
-    try{localStorage.setItem(CACHE,JSON.stringify({schemaVersion:1,datasetId:C.DATASET,records,pending,lastBackup}));storageFailed=false;}
+    try{localStorage.setItem(CACHE,JSON.stringify({schemaVersion:1,datasetId:C.DATASET,addedParticipants:people.filter(p=>p.added),records,pending,lastBackup}));storageFailed=false;}
     catch{storageFailed=true;}
   }
   function status() {
@@ -182,7 +185,17 @@
   }
   async function api(path,options={}) {
     const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),8000);
-    try{return await fetch(path,{cache:'no-store',...options,headers:{...options.headers,'X-Conference-Roster':'2'},signal:controller.signal});}finally{clearTimeout(timeout);}
+    try{return await fetch(path,{cache:'no-store',...options,headers:{...options.headers,'X-Conference-Roster':'3'},signal:controller.signal});}finally{clearTimeout(timeout);}
+  }
+  function syncRoster(){
+    people.sort((a,b)=>(a.country||'\uffff').localeCompare(b.country||'\uffff')||name(a).localeCompare(name(b)));
+    byId.clear();people.forEach(p=>byId.set(p.id,p));updateWorkspace();
+  }
+  function adoptSaved(saved){
+    const next=C.mergePeople(seedPeople,saved.addedParticipants||[]),nextRecords=C.validateRecords(saved.records,next);
+    people=next;records=nextRecords;
+    for(const op of pending)records=C.apply(records,op,people);
+    syncRoster();serverRevision=saved.revision;
   }
   async function flush() {
     if(!backend||saving||!pending.length||fatal)return;
@@ -192,8 +205,7 @@
       const response=await api('api/actions',{method:'POST',headers:{'Content-Type':'application/json','X-Conference-Client':'local-dashboard'},body:JSON.stringify({datasetId:C.DATASET,operations:batch})});
       const saved=await response.json();if(!response.ok)throw new Error(saved.error||'Could not save the progress file.');
       const acknowledged=new Set(batch.map(o=>o.id));pending=pending.filter(o=>!acknowledged.has(o.id));
-      records=C.validateRecords(saved.records,people);for(const op of pending)records=C.apply(records,op,people);
-      serverRevision=saved.revision;cache();renderAll();status();
+      adoptSaved(saved);cache();renderAll();status();
     }catch(error){
       $('save-status').className='save-status pending';$('save-status').lastElementChild.textContent=storageFailed?'Changes need a backup':'Saved in browser · file update pending';
       $('save-error').hidden=false;$('save-error').textContent=`The local progress file could not be updated. ${storageFailed?'Export a backup now.':'Your changes remain in this browser and will retry automatically.'} ${error.message}`;
@@ -203,6 +215,7 @@
   function change(operations,render=true) {
     if(!ready||fatal)return;
     for(const action of operations){const op={...action,id:uid(),workspace};records=C.apply(records,op,people);pending.push(op);}
+    if(operations.some(op=>op.kind==='restore'))syncRoster();
     // Local-only deployments need no server queue; their authoritative state is the browser cache.
     if(!backend)pending=[];
     cache();status();if(render)renderAll();
@@ -224,7 +237,7 @@
     const r=records[p.id], fullName=name(p),required=r.visaRequired?['visa','flight','hotel']:['flight','hotel'],done=required.filter(k=>r[k]).length,pr=workspace==='PR';
     const source=p.sourceStatus,reference=source?[source.visa&&'Visa: '+source.visa,source.flight&&'Flight: '+source.flight,source.remarks].filter(Boolean).join(' · '):'';
     return `<article class="card ${r.priority?'priority':''} ${r.attending?'':'not-attending'}" data-person="${esc(p.id)}" aria-label="${esc(fullName)}"><div class="card-body"><div class="card-top"><div><h4 class="person-name">${esc(fullName)}</h4><div class="organization">${esc(p.organization||'Organization not provided')}</div></div><div class="card-actions"><button class="visa-requirement ${r.visaRequired?'required':'waived'}" data-action="visa-required" aria-pressed="${r.visaRequired}" aria-label="Visa requirement for ${esc(fullName)}: ${r.visaRequired?'required':'not required'}" ${pr?'disabled':''}><i></i>${r.visaRequired?'Visa required':'Not required'}</button><button class="priority-button" data-action="priority" aria-pressed="${r.priority}" aria-label="Priority for ${esc(fullName)}" ${pr?'disabled':''} title="${r.priority?'Remove priority':'Mark as priority'}">⚑</button></div></div>
-      <div class="card-country">${flag(p)}<span>${esc(p.country)}</span><span class="owner-tag">${C.owners(p).map(esc).join(' · ')}</span></div>
+      <div class="card-country">${flag(p)}<span>${esc(countryName(p))}</span><span class="owner-tag">${C.owners(p).map(esc).join(' · ')}</span></div>
       ${p.contactReview?`<p class="contact-review">${esc(p.contactReview)}</p>`:''}
       <div class="contact-line"><svg viewBox="0 0 18 18" aria-hidden="true"><rect x="2" y="4" width="14" height="10" rx="2"/><path d="m3 5 6 5 6-5"/></svg>${p.email?`<a href="mailto:${esc(p.email)}">${esc(p.email)}</a>`:'<span class="missing">Email not provided</span>'}</div>
       <div class="contact-line"><svg viewBox="0 0 18 18" aria-hidden="true"><path d="M4 2h3l1 4-2 1c1 3 2 4 5 5l1-2 4 1v3c0 2-3 2-5 1C6 13 3 9 2 5c0-2 0-3 2-3Z"/></svg><span class="contact-phones">${p.phones.length?p.phones.map(phone=>`<a href="tel:${esc(phone.replace(/[^+\d]/g,''))}">${esc(phone)}</a>`).join(''):'<span class="missing">Phone not provided</span>'}</span></div>
@@ -268,7 +281,7 @@
       const group=visible.filter(p=>p.country===country);if(!group.length)continue;
       let section=groupViews.get(country);
       if(!section){
-        section=element(`<section class="country-group"><div class="group-heading"><img class="flag" src="assets/flags/${group[0].countryCode}.svg" alt=""><h3>${esc(country)}</h3><span class="group-count"></span><span class="group-rule"></span></div><div class="cards"></div></section>`);
+        section=element(`<section class="country-group"><div class="group-heading">${flag(group[0])}<h3>${esc(country||'Country not provided')}</h3><span class="group-count"></span><span class="group-rule"></span></div><div class="cards"></div></section>`);
         groupViews.set(country,section);
       }
       const label=`${group.length} ${group.length===1?'participant':'participants'}`,count=section.querySelector('.group-count');
@@ -289,11 +302,12 @@
   function renderAll(){
     renderStats();
     renderDrawer();
-    const mapState=JSON.stringify([workspace,filters.country,...scopedPeople.map(p=>[records[p.id].attending,records[p.id].priority])]);
+    $('add-participant').disabled=!ready||fatal;
+    const mapState=JSON.stringify([workspace,filters.country,...scopedPeople.map(p=>[p.id,p.countryCode,records[p.id].attending,records[p.id].priority])]);
     if(mapState!==lastMapState){world?.update(records,filters.country,scopedPeople);lastMapState=mapState;}
     const visible=scopedPeople.filter(p=>C.matches(p,records[p.id],filters));
     $('result-count').textContent=visible.length;
-    $('filter-summary').textContent=`${visible.length} of ${scopedPeople.length} participants · ${filters.country||'Grouped by country'} · ${workspace}`;
+    $('filter-summary').textContent=`${visible.length} of ${scopedPeople.length} participants · ${filters.country==='__missing__'?'Country not provided':filters.country||'Grouped by country'} · ${workspace}`;
     renderDirectory(visible);
     $('empty').hidden=visible.length!==0;
     document.querySelectorAll('.country-link').forEach(b=>{b.classList.toggle('active',b.dataset.country===filters.country);b.setAttribute('aria-pressed',String(b.dataset.country===filters.country));});
@@ -335,18 +349,19 @@
   document.addEventListener('pointerdown',e=>{if(drawerPanel&&!e.target.closest('.sidebar,#nav-drawer'))closeDrawer();});
   $('drawer-people').onclick=e=>{
     const button=e.target.closest('[data-jump-person]');if(!button)return;
-    const p=byId.get(button.dataset.jumpPerson);Object.keys(filters).forEach(k=>filters[k]='');filters.search=p.email;$('search').value=p.email;
-    closeDrawer();renderAll();const card=$('participants').querySelector('.card');
+    const p=byId.get(button.dataset.jumpPerson);Object.keys(filters).forEach(k=>filters[k]='');filters.search=p.email||[p.firstName,p.lastName].filter(Boolean).join(' ')||p.organization||p.phones[0]||p.country;$('search').value=filters.search;
+    closeDrawer();renderAll();const card=cardViews.get(p.id)?.node;
     if(card){card.tabIndex=-1;card.focus({preventScroll:true});card.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'center'});}
   };
   function downloadBackup(prefix='conference-progress') {
-    const data={schemaVersion:1,datasetId:C.DATASET,exportedAt:new Date().toISOString(),records};
+    const data={schemaVersion:1,datasetId:C.DATASET,exportedAt:new Date().toISOString(),addedParticipants:people.filter(p=>p.added),records};
     const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob);
     const a=document.createElement('a');a.href=url;a.download=`${prefix}-${new Date().toISOString().replace(/[:.]/g,'-')}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),5000);
     lastBackup=data.exportedAt;cache();toast('Backup download started. Keep it somewhere safe.');
   }
-  $('country-nav').innerHTML=`<button class="country-link active" data-country="" aria-pressed="true">All countries <span class="country-count">${people.length}</span></button>`+allCountries.map(c=>{const group=people.filter(p=>p.country===c);return `<button class="country-link" data-country="${esc(c)}" aria-pressed="false">${flag(group[0])}<span>${esc(c)}</span><span class="country-count">${group.length}</span></button>`;}).join('');
-  $('filter-country').insertAdjacentHTML('beforeend',allCountries.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join(''));
+  $('country-nav').innerHTML=`<button class="country-link active" data-country="" aria-pressed="true">All countries <span class="country-count">${people.length}</span></button>`+[...countryCatalog,{country:'Country not provided',countryCode:''}].map(p=>`<button class="country-link" data-country="${esc(p.countryCode?p.country:'__missing__')}" aria-pressed="false">${flag(p)}<span>${esc(p.country)}</span><span class="country-count">0</span></button>`).join('');
+  $('filter-country').insertAdjacentHTML('beforeend',allCountries.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')+'<option value="__missing__">Country not provided</option>');
+  $('new-country').insertAdjacentHTML('beforeend',countryCatalog.map(p=>`<option value="${p.countryCode}">${esc(p.country)}</option>`).join(''));
   $('country-nav').addEventListener('click',e=>{const b=e.target.closest('[data-country]');if(!b)return;Object.keys(filters).forEach(k=>filters[k]='');$('search').value='';filters.country=b.dataset.country;closeDrawer(true);renderAll();document.querySelector('.directory').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});});
   document.querySelectorAll('[data-panel]').forEach(b=>b.onclick=()=>{
     if(drawerPanel===b.dataset.panel){closeDrawer();return;}
@@ -358,6 +373,66 @@
   for(const key of ['country','attendance','priority','completion'])$('filter-'+key).onchange=e=>{filters[key]=e.target.value;renderAll();};
   document.querySelectorAll('select').forEach(select=>pickerViews.push(enhanceSelect(select)));
   $('clear-filters').onclick=reset;$('empty-reset').onclick=reset;
+  let creating=false,creationAttempt=null,newOwner='FH';
+  const participantDialog=$('participant-dialog'),participantForm=$('participant-form');
+  function lockNewFields(locked){
+    participantForm.querySelectorAll('input,textarea,select,#new-attending,#new-visa-required').forEach(el=>el.disabled=locked);
+    if(!locked)$('new-visa').disabled=$('new-visa-required').getAttribute('aria-pressed')!=='true';
+    pickerViews.forEach(p=>p.sync());
+  }
+  participantForm.addEventListener('input',()=>{if(!creationAttempt)$('participant-form-error').hidden=true;});
+  function newToggle(button,on,label,offLabel,kind){
+    button.setAttribute('aria-pressed',String(on));button.innerHTML=`<i></i>${on?label:offLabel}`;
+    if(kind==='visa'){button.classList.toggle('required',on);button.classList.toggle('waived',!on);$('new-visa').disabled=!on;if(!on)$('new-visa').checked=false;}
+    else button.classList.toggle('off',!on);
+  }
+  $('new-attending').onclick=()=>newToggle($('new-attending'),$('new-attending').getAttribute('aria-pressed')!=='true','Attending','Not attending');
+  $('new-visa-required').onclick=()=>newToggle($('new-visa-required'),$('new-visa-required').getAttribute('aria-pressed')!=='true','Visa required','Not required','visa');
+  $('add-participant').onclick=()=>{
+    if(!ready||fatal||workspace==='PR')return;
+    activePicker?.close();closeDrawer();closeWorkspace();newOwner=workspace;creationAttempt=null;
+    participantForm.reset();lockNewFields(false);participantDialog.querySelector('details').open=false;$('save-participant').textContent='Add participant';
+    newToggle($('new-attending'),true,'Attending','Not attending');newToggle($('new-visa-required'),true,'Visa required','Not required','visa');
+    $('new-workspace-label').textContent='NEW CARD · '+workspaces[newOwner];$('participant-form-error').hidden=true;
+    pickerViews.forEach(p=>p.sync());participantDialog.showModal();
+    animate(participantDialog,[{opacity:0,translate:'0 12px',scale:'.975'},{opacity:1,translate:'0 0',scale:'1'}],240);
+    $('new-first-name').focus();
+  };
+  function closeParticipant(){if(creating)return;activePicker?.close();participantDialog.close();$('add-participant').focus({preventScroll:true});}
+  $('close-participant').onclick=closeParticipant;$('cancel-participant').onclick=closeParticipant;
+  participantDialog.addEventListener('cancel',e=>{e.preventDefault();if(activePicker)activePicker.close(true);else closeParticipant();});
+  participantForm.addEventListener('submit',async e=>{
+    e.preventDefault();if(creating||workspace==='PR'||fatal||!ready)return;
+    $('participant-form-error').hidden=true;
+    try{
+      if(!creationAttempt){
+        const country=countryCatalog.find(p=>p.countryCode===$('new-country').value);
+        const participant=C.validateAddedParticipants([{id:'added-'+uid(),firstName:$('new-first-name').value.trim(),lastName:$('new-last-name').value.trim(),email:$('new-email').value.trim(),organization:$('new-organization').value.trim(),country:country?.country||'',countryCode:country?.countryCode||'',phones:[$('new-phone').value.trim()].filter(Boolean),owners:[newOwner],attending:$('new-attending').getAttribute('aria-pressed')==='true',visaRequired:$('new-visa-required').getAttribute('aria-pressed')==='true'}])[0];
+        if(participant.email&&people.some(p=>p.email?.toLocaleLowerCase()===participant.email.toLocaleLowerCase()))throw new Error('A participant with this email already exists. Search FH or SM for their card.');
+        creationAttempt={id:uid(),workspace:newOwner,kind:'addParticipant',participant,priority:$('new-priority').checked,visa:$('new-visa').checked,flight:$('new-flight').checked,hotel:$('new-hotel').checked,note:$('new-note').value.trim()};
+      }
+      creating=true;participantForm.inert=true;$('save-participant').textContent='Saving…';
+      const operation=creationAttempt;
+      if(backend){
+        await flush();if(pending.length||saving){creationAttempt=null;throw new Error('Earlier changes are still saving. Please try again in a moment.');}
+        const response=await api('api/actions',{method:'POST',headers:{'Content-Type':'application/json','X-Conference-Client':'local-dashboard'},body:JSON.stringify({datasetId:C.DATASET,operations:[operation]})});
+        const saved=await response.json();if(!response.ok){if(response.status===400)creationAttempt=null;throw new Error(saved.error||'Could not save the new card.');}
+        adoptSaved(saved);
+      }else{
+        const next=C.mergePeople(people,[operation.participant]),initial=C.initialRecords([operation.participant])[operation.participant.id],time=new Date().toISOString();
+        for(const k of ['priority','visa','flight','hotel'])initial[k]=operation[k];
+        if(operation.note)initial.notes=[{id:operation.participant.id+'-note',text:operation.note,done:false,reviewed:false,createdAt:time,updatedAt:time}];
+        // Do not report a new card as saved unless the browser accepted the complete copy.
+        localStorage.setItem(CACHE,JSON.stringify({schemaVersion:1,datasetId:C.DATASET,addedParticipants:next.filter(p=>p.added),records:{...records,[operation.participant.id]:initial},pending:[],lastBackup}));
+        people=next;records[operation.participant.id]=initial;syncRoster();
+      }
+      cache();status();creating=false;participantForm.inert=false;closeParticipant();reset();
+      const card=cardViews.get(operation.participant.id)?.node;
+      if(card){card.tabIndex=-1;card.scrollIntoView({behavior:reducedMotion.matches?'auto':'smooth',block:'center'});card.focus({preventScroll:true});}
+      creationAttempt=null;toast('Participant added to '+newOwner+' and PR.');
+    }catch(error){lockNewFields(!!creationAttempt);$('participant-form-error').textContent=error.message+(creationAttempt?' Your details are kept. Retry saving to confirm this same card.':'');$('participant-form-error').hidden=false;}
+    finally{creating=false;participantForm.inert=false;$('save-participant').textContent=creationAttempt?'Retry saving':'Add participant';}
+  });
   $('participants').addEventListener('toggle',e=>{if(e.target.matches('details')&&!noteMotions.has(e.target)){const id=e.target.closest('[data-person]').dataset.person;if(e.target.open)expanded.add(id);else expanded.delete(id);}},true);
   $('participants').addEventListener('click',e=>{
     const summary=e.target.closest('summary');if(!summary)return;
@@ -419,32 +494,32 @@
   $('restore-backup').onclick=()=>$('backup-file').click();
   $('backup-file').onchange=async e=>{
     const file=e.target.files[0];if(!file)return;
-    try{if(workspace==='PR')throw new Error('Switch to FH or SM to restore a backup.');if(file.size>12000000)throw new Error('Backup is too large.');const value=JSON.parse(await file.text());if(value.datasetId!==C.DATASET||value.schemaVersion!==1)throw new Error('This is not a Conference Desk backup for your participant list.');C.restoreRecords(value.records,people,records);incomingBackup=value.records;$('restore-summary').textContent=`This backup will restore ${Object.keys(value.records).length} participants. Records outside the backup will be preserved.`;$('confirm-dialog').showModal();}
+    try{if(workspace==='PR')throw new Error('Switch to FH or SM to restore a backup.');if(file.size>12000000)throw new Error('Backup is too large.');const value=JSON.parse(await file.text());if(value.datasetId!==C.DATASET||value.schemaVersion!==1)throw new Error('This is not a Conference Desk backup for your participant list.');const merged=C.mergePeople(people,value.addedParticipants||[]);C.restoreRecords(value.records,merged,{...C.initialRecords(merged),...records});incomingBackup={records:value.records,addedParticipants:value.addedParticipants||[]};$('restore-summary').textContent=`This backup will restore ${Object.keys(value.records).length} participants. Records outside the backup will be preserved.`;$('confirm-dialog').showModal();}
     catch(error){toast('Backup could not be loaded: '+error.message);}finally{e.target.value='';}
   };
   $('cancel-restore').onclick=()=>{$('confirm-dialog').close();incomingBackup=null;};
-  $('confirm-restore').onclick=()=>{if(!incomingBackup)return;downloadBackup('before-restore');fatal=false;ready=true;change([{kind:'restore',records:incomingBackup}]);incomingBackup=null;$('confirm-dialog').close();toast('Progress restored.');};
+  $('confirm-restore').onclick=()=>{if(!incomingBackup)return;downloadBackup('before-restore');fatal=false;ready=true;change([{kind:'restore',...incomingBackup}]);incomingBackup=null;$('confirm-dialog').close();toast('Progress restored.');};
   $('saving-help').onclick=()=>{$('storage-explanation').textContent=backend?'This local version saves to your browser and to a progress file on this computer. The indicator at the top confirms when the file is saved.':'This version saves in this browser on this device. Clearing site data removes that browser copy. Export backups regularly. A GitHub Pages version will also use browser storage until a shared database is added.';$('help-dialog').showModal();};
   window.addEventListener('pagehide',()=>{cache();if(!fatal&&backend&&pending.length)fetch('api/actions',{method:'POST',keepalive:true,headers:{'Content-Type':'application/json','X-Conference-Client':'local-dashboard'},body:JSON.stringify({datasetId:C.DATASET,operations:pending.slice(0,500)})}).catch(()=>{});});
   window.addEventListener('online',flush);
   async function refreshShared(){
-    if(!ready||!backend||pending.length||saving||fatal||refreshing||document.hidden)return;
+    if(!ready||!backend||pending.length||saving||creating||fatal||refreshing||document.hidden)return;
     refreshing=true;
-    try{const response=await api('api/state');if(response.ok){const saved=await response.json();if(pending.length||saving||saved.revision===serverRevision)return;records=C.validateRecords(saved.records,people);serverRevision=saved.revision;cache();renderAll();status();}}catch{}finally{refreshing=false;}
+    try{const response=await api('api/state');if(response.ok){const saved=await response.json();if(pending.length||saving||saved.revision===serverRevision)return;adoptSaved(saved);cache();renderAll();status();}}catch{}finally{refreshing=false;}
   }
   window.addEventListener('focus',refreshShared);document.addEventListener('visibilitychange',refreshShared);setInterval(refreshShared,2000);
-  window.addEventListener('storage',e=>{if(e.key!==CACHE||backend||pending.length||!e.newValue)return;try{const saved=JSON.parse(e.newValue);records=C.validateRecords(saved.records,people);renderAll();}catch{}});
+  window.addEventListener('storage',e=>{if(e.key!==CACHE||backend||pending.length||!e.newValue)return;try{const saved=JSON.parse(e.newValue);adoptSaved(saved);renderAll();}catch{}});
   async function init(){
     let cached=null;
-    try{const raw=localStorage.getItem(CACHE);if(raw){cached=JSON.parse(raw);records=C.restoreRecords(cached.records,people);pending=Array.isArray(cached.pending)?cached.pending:[];lastBackup=cached.lastBackup;}}
+    try{const raw=localStorage.getItem(CACHE);if(raw){cached=JSON.parse(raw);people=C.mergePeople(seedPeople,cached.addedParticipants||[]);records=C.restoreRecords(cached.records,people);pending=Array.isArray(cached.pending)?cached.pending:[];lastBackup=cached.lastBackup;}}
     catch{cacheDamaged=true;}
     if(location.protocol!=='file:'){
       try{
         const response=await api('api/state');
-        if(response.ok){const saved=await response.json();if(saved.datasetId!==C.DATASET)throw new Error('Unexpected save service.');backend=true;serverRevision=saved.revision;const base=C.validateRecords(saved.records,people);
+        if(response.ok){const saved=await response.json();if(saved.datasetId!==C.DATASET)throw new Error('Unexpected save service.');backend=true;serverRevision=saved.revision;const cachedRecords=records,cachedAdded=people.filter(p=>p.added);
           // Recover an existing browser copy if a new, empty local progress directory is used.
-          if(saved.revision===0&&cached&&!cacheDamaged&&JSON.stringify(records)!==JSON.stringify(C.initialRecords(people))){pending=[{id:uid(),kind:'restore',records}];}
-          records=base;for(const op of pending)records=C.apply(records,op,people);cacheDamaged=false;
+          if(saved.revision===0&&cached&&!cacheDamaged&&JSON.stringify(records)!==JSON.stringify(C.initialRecords(people))){pending=[{id:uid(),kind:'restore',records:cachedRecords,addedParticipants:cachedAdded}];}
+          adoptSaved(saved);cacheDamaged=false;
         }else if(response.status!==404){throw new Error('The local save service is not available.');}
       }catch(error){
         // An unavailable local save service must never be mistaken for a clean deployment.
@@ -454,19 +529,19 @@
       }
     }
     if(cacheDamaged){fatal=true;$('save-error').hidden=false;$('save-error').textContent='The saved browser copy could not be read. Restore a backup to continue. The existing copy has not been overwritten.';}
-    ready=!fatal;renderAll();$('participants').setAttribute('aria-busy','false');
+    ready=!fatal;syncRoster();renderAll();$('participants').setAttribute('aria-busy','false');
     if(fatal)$('participants').querySelectorAll('button,input,textarea').forEach(el=>el.disabled=true);
     if(!fatal)cache();status();flush();
   }
   function updateWorkspace(){
     scopedPeople=C.scopePeople(people,workspace);countries=[...new Set(scopedPeople.map(p=>p.country))].sort((a,b)=>a.localeCompare(b));
     const countrySet=new Set(countries),codeSet=new Set(scopedPeople.map(p=>p.countryCode));
-    for(const option of $('filter-country').options)option.hidden=!!option.value&&!countrySet.has(option.value);
+    for(const option of $('filter-country').options)option.hidden=!!option.value&&!countrySet.has(option.value==='__missing__'?'':option.value);
     for(const option of $('map-country').options)option.hidden=!!option.value&&!codeSet.has(option.value);
-    document.querySelectorAll('.country-link').forEach(b=>{const country=b.dataset.country,count=country?scopedPeople.filter(p=>p.country===country).length:scopedPeople.length;b.hidden=!count;b.querySelector('.country-count').textContent=count;});
+    document.querySelectorAll('.country-link').forEach(b=>{const country=b.dataset.country,count=country?scopedPeople.filter(p=>p.country===(country==='__missing__'?'':country)).length:scopedPeople.length;b.hidden=!count;b.querySelector('.country-count').textContent=count;});
     $('workspace-avatar').textContent=workspace;$('workspace-button').setAttribute('aria-label','Switch workspace: '+workspaces[workspace]);
     $('workspace-name').textContent=workspaces[workspace];$('workspace-intro').textContent=workspace==='PR'?'Both participant lists, together. Update completion and review notes.':workspaces[workspace]+'’s participants, arrangements, and follow-up notes.';
-    $('workspace-footer').textContent=workspaces[workspace]+' · Participant list';$('restore-backup').hidden=workspace==='PR';
+    $('workspace-footer').textContent=workspaces[workspace]+' · Participant list';$('restore-backup').hidden=workspace==='PR';$('add-participant').hidden=workspace==='PR';
     $('workspace-policy').hidden=workspace!=='PR';document.body.dataset.workspace=workspace;
     document.querySelectorAll('[data-workspace]').forEach(b=>{b.setAttribute('aria-checked',String(b.dataset.workspace===workspace));b.querySelector('strong').textContent=workspaces[b.dataset.workspace];b.querySelector('.workspace-count').textContent=C.scopePeople(people,b.dataset.workspace).length+' participants';});
     document.title='Conference Desk · '+workspace;

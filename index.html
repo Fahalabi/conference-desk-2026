@@ -39,7 +39,7 @@
       <section class="world-panel" aria-labelledby="world-title">
         <div class="world-heading"><div><div class="eyebrow">YOUR GLOBAL GUEST LIST</div><h2 id="world-title">Attendance around the world</h2></div><div class="map-totals"><span><i class="orange-dot"></i><strong id="map-active-count">49</strong> countries attending</span><span class="priority-total"><i class="red-dot"></i><strong id="map-priority-count">0</strong> with priority</span></div></div>
         <div class="world-content">
-          <div class="map-stage"><div class="map-instruction">Hover to explore. Click a country to filter its cards.</div><div id="world-map" aria-busy="true"><p class="map-fallback">Loading the world map. You can also choose a country from the country list.</p></div><div class="map-controls" aria-label="Map zoom"><button id="map-zoom-in" aria-label="Zoom in on world map" title="Zoom in">+</button><button id="map-zoom-out" aria-label="Zoom out on world map" title="Zoom out">−</button><button id="map-reset" aria-label="Reset world map" title="Reset map">↺</button></div><div class="map-legend"><span><i class="legend-active"></i>Attending</span><span><i class="legend-dim"></i>No attendees</span><span><i class="legend-urgent"></i>Priority follow-up</span></div></div>
+          <div class="map-stage"><div class="map-instruction">Hover to explore. Click a country to filter its cards.</div><div id="world-map" aria-busy="true"><p class="map-fallback">Loading the world map. You can also choose a country from the country list.</p></div><div class="map-legend"><span><i class="legend-active"></i>Attending</span><span><i class="legend-dim"></i>No attendees</span><span><i class="legend-urgent"></i>Priority follow-up</span></div></div>
           <aside class="country-spotlight" aria-label="Country participants"><label class="map-picker"><span>EXPLORE A COUNTRY</span><select id="map-country"><option value="">World overview</option></select></label><div id="map-details" aria-live="polite" aria-atomic="true"></div></aside>
         </div>
         <div class="map-caption"><span>Based on this workspace’s assigned list. Priority includes people not attending.</span><a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Map: Natural Earth</a></div>
@@ -52,7 +52,7 @@
       </section>
       <div class="stats-caption">Totals cover attending participants in this workspace. Visa totals include only people marked “Visa required.”</div>
       <section class="directory" aria-labelledby="directory-title">
-        <div class="directory-heading"><h2 id="directory-title">Your participants <span id="result-count">124</span></h2><button class="text-button" id="clear-filters">Reset filters</button></div>
+        <div class="directory-heading"><h2 id="directory-title">Your participants <span id="result-count">124</span></h2><div class="directory-actions"><button class="text-button" id="clear-filters">Reset filters</button><button class="button primary" id="add-participant" disabled><span aria-hidden="true">＋</span> Add participant</button></div></div>
         <div class="filters"><label class="search"><span class="sr-only">Search participants</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input id="search" type="search" placeholder="Search name, email, organization or notes…" autocomplete="off"></label>
           <label class="filter"><span>Country</span><select id="filter-country"><option value="">All countries</option></select></label>
           <label class="filter"><span>Attendance</span><select id="filter-attendance"><option value="">Everyone</option><option value="attending">Attending</option><option value="not-attending">Not attending</option></select></label>
@@ -67,7 +67,34 @@
     </main>
   </div>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-  <dialog id="help-dialog"><form method="dialog"><button class="close" aria-label="Close saving help">×</button></form><div class="eyebrow">YOUR WORK, SAVED</div><h2>Pick up where you left off.</h2><p id="storage-explanation"></p><p>Attendance, visa requirements, priority, arrangement checkboxes, note reviews, and unfinished note drafts are saved automatically.</p><p><strong>Export Data</strong> downloads an Excel workbook with the current workspace’s details and progress, plus a Notes tab with all notes and drafts. Filters do not limit the export.</p><p>Use the backup button below to save a restorable copy of both workspaces. <strong>Restore</strong> accepts these JSON backups so you can move your progress to another browser or to the future GitHub version. Excel exports are for working with your data outside the dashboard.</p><p>With the local launcher, progress is stored in <code>data/progress.json</code> and the latest 100 previous saves are kept in <code>data/backups</code>. Keep this dashboard folder when moving computers.</p><button class="button primary" id="help-export">Download restore backup</button></dialog>
+  <dialog id="participant-dialog" aria-labelledby="participant-dialog-title" aria-describedby="participant-dialog-intro">
+    <form id="participant-form">
+      <button type="button" class="close" id="close-participant" aria-label="Close add participant">×</button>
+      <div class="eyebrow" id="new-workspace-label">NEW CARD · FH</div>
+      <h2 id="participant-dialog-title">Add a participant<span>.</span></h2>
+      <p id="participant-dialog-intro">Fill in what you know. Missing details can stay blank.</p>
+      <div class="participant-fields">
+        <label class="entry-field"><span>First name</span><input id="new-first-name" name="firstName" autocomplete="off" maxlength="500" placeholder="First name" autofocus></label>
+        <label class="entry-field"><span>Last name</span><input id="new-last-name" name="lastName" autocomplete="off" maxlength="500" placeholder="Last name"></label>
+        <label class="entry-field"><span>Email</span><input id="new-email" name="email" type="email" autocomplete="off" maxlength="500" placeholder="Email address"></label>
+        <label class="entry-field"><span>Phone number</span><input id="new-phone" name="phone" type="tel" autocomplete="off" maxlength="100" placeholder="Include country code if known"></label>
+        <label class="entry-field"><span>Organization</span><input id="new-organization" name="organization" autocomplete="off" maxlength="500" placeholder="Organization name"></label>
+        <label class="entry-field filter"><span>Country</span><select id="new-country" name="country"><option value="">Leave blank</option></select></label>
+      </div>
+      <div class="new-card-settings">
+        <button type="button" id="new-attending" class="attendance" aria-pressed="true"><i></i>Attending</button>
+        <button type="button" id="new-visa-required" class="visa-requirement required" aria-pressed="true"><i></i>Visa required</button>
+        <label class="new-priority"><input id="new-priority" type="checkbox"> Priority</label>
+      </div>
+      <details class="new-card-extra"><summary>Arrangements &amp; first note <span class="chevron" aria-hidden="true">⌄</span></summary><div class="new-extra-content">
+        <div class="arrangements"> <label class="arrangement"><input id="new-visa" type="checkbox"><span>Visa completed</span></label><label class="arrangement"><input id="new-flight" type="checkbox"><span>Flight completed</span></label><label class="arrangement"><input id="new-hotel" type="checkbox"><span>Hotel completed</span></label></div>
+        <label class="entry-field new-note-field"><span>First note</span><textarea id="new-note" maxlength="20000" rows="2" placeholder="Add a follow-up to this card…"></textarea></label>
+      </div></details>
+      <p id="participant-form-error" class="form-error" role="alert" hidden></p>
+      <div class="dialog-actions"><span class="new-card-save-hint">Saved locally · Shared with PR</span><button type="button" class="button" id="cancel-participant">Cancel</button><button type="submit" class="button primary" id="save-participant">Add participant</button></div>
+    </form>
+  </dialog>
+  <dialog id="help-dialog"><form method="dialog"><button class="close" aria-label="Close saving help">×</button></form><div class="eyebrow">YOUR WORK, SAVED</div><h2>Pick up where you left off.</h2><p id="storage-explanation"></p><p>New participant cards, attendance, visa requirements, priority, arrangement checkboxes, note reviews, and unfinished note drafts are saved automatically.</p><p><strong>Export Data</strong> downloads an Excel workbook with the current workspace’s details and progress, plus a Notes tab with all notes and drafts. Filters do not limit the export.</p><p>Use the backup button below to save a restorable copy of both workspaces. <strong>Restore</strong> accepts these JSON backups so you can move your progress to another browser or to the future GitHub version. Excel exports are for working with your data outside the dashboard.</p><p>With the local launcher, progress is stored in <code>data/progress.json</code> and the latest 100 previous saves are kept in <code>data/backups</code>. Keep this dashboard folder when moving computers.</p><button class="button primary" id="help-export">Download restore backup</button></dialog>
   <dialog id="confirm-dialog"><div class="eyebrow">RESTORE BACKUP</div><h2>Replace current progress?</h2><p id="restore-summary"></p><p>Your current progress will be downloaded as a safety copy first.</p><div class="dialog-actions"><button class="button" id="cancel-restore">Cancel</button><button class="button primary" id="confirm-restore">Restore progress</button></div></dialog>
 </body>
 </html>

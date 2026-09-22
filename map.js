@@ -8,19 +8,19 @@
     if(!data){host.setAttribute('aria-busy','false');host.querySelector('p').textContent='Map unavailable. Use the country list or filters to explore your participants.';return {update(){}};}
     const $=id=>document.getElementById(id),byCode=new Map(data.countries.map(c=>[c.code,c]));
     const assigned=new Map(people.map(p=>[p.countryCode,p.country]));
-    let records=null,summary=new Map(),hovered='',selected='',zoom=1,focusCenter=[550,275],pointerStart=null,panned=false,zoomFrame=0,detailMotion=null;
+    let records=null,summary=new Map(),hovered='',selected='',detailMotion=null;
     const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
-    host.innerHTML=`<svg id="attendance-map" viewBox="0 0 1100 550" role="group" aria-label="Interactive world attendance map" aria-describedby="map-description"><desc id="map-description">Orange countries have attending participants. Dim countries have none. Red halos mark countries with priority participants. Focus or hover over a country to read names. Activate it to filter the participant cards. Small countries have location dots.</desc><defs><filter id="priority-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="5"/></filter></defs><g id="map-geometry"><path class="map-graticule" d="${data.graticule}"/>${data.countries.map(c=>`<path d="${c.path}" class="map-country is-dim" data-code="${esc(c.code)}" ${assigned.has(c.code)?`role="button" tabindex="${c.area<75?'-1':'0'}"`:'role="img"'} aria-label="${esc(assigned.get(c.code)||c.name)}"/>`).join('')}<g id="priority-halos" aria-hidden="true" pointer-events="none"></g><g id="small-country-points">${data.countries.filter(c=>assigned.has(c.code)&&c.area<75).map(c=>`<g class="map-point is-dim" data-code="${esc(c.code)}" transform="translate(${c.center})" role="button" tabindex="0" aria-label="${esc(assigned.get(c.code))}"><circle class="point-hit" r="8"/><circle class="point-visible" r="3.8"/></g>`).join('')}</g></g></svg>`;
+    host.innerHTML=`<svg id="attendance-map" viewBox="0 0 1100 550" role="group" aria-label="Interactive world attendance map" aria-describedby="map-description"><desc id="map-description">Orange countries have attending participants. Dim countries have none. Red halos mark countries with priority participants. Focus or hover over a country to read names. Activate it to filter the participant cards. Small countries have location dots.</desc><defs><filter id="priority-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="5"/></filter></defs><g id="map-geometry"><path class="map-graticule" d="${data.graticule}"/>${data.countries.map(c=>`<path d="${c.path}" class="map-country is-dim" data-code="${esc(c.code)}" ${assigned.has(c.code)?`role="button" tabindex="${c.area<75?'-1':'0'}"`:'role="img"'} aria-label="${esc(assigned.get(c.code)||c.name)}"/>`).join('')}<g id="priority-halos" aria-hidden="true" pointer-events="none"></g><g id="small-country-points">${data.countries.filter(c=>c.area<75).map(c=>`<g class="map-point is-dim" data-code="${esc(c.code)}" transform="translate(${c.center})" role="button" tabindex="0" aria-label="${esc(assigned.get(c.code)||c.name)}"><circle class="point-hit" r="8"/><circle class="point-visible" r="3.8"/></g>`).join('')}</g></g></svg>`;
     const svg=$('attendance-map'),details=$('map-details');
     function revealDetails(){
       detailMotion?.cancel();
       if(!reducedMotion.matches&&details.animate)detailMotion=details.animate([{opacity:.5,translate:'0 4px'},{opacity:1,translate:'0 0'}],{duration:180,easing:'cubic-bezier(.22,.8,.25,1)'});
     }
-    $('map-country').insertAdjacentHTML('beforeend',[...assigned.entries()].sort((a,b)=>a[1].localeCompare(b[1])).map(([code,country])=>`<option value="${esc(code)}">${esc(country)}</option>`).join(''));
+    $('map-country').insertAdjacentHTML('beforeend',data.countries.map(c=>[c.code,assigned.get(c.code)||c.name]).sort((a,b)=>a[1].localeCompare(b[1])).map(([code,country])=>`<option value="${esc(code)}">${esc(country)}</option>`).join(''));
     function overview(){
       if(!records)return;
-      const totals=window.ConferenceCore.totals(records,people),urgent=[...summary.values()].filter(c=>c.priority.length);
-      details.innerHTML=`<div class="world-overview"><div class="overview-orbit"><span>${totals.attending}</span><small>attending</small></div><h3>Your world of participants</h3><p>Hover or tap a country to see who’s attending.</p>${urgent.length?`<div class="urgency-note"><span class="red-dot"></span>${totals.priority} priority ${totals.priority===1?'person':'people'} across ${urgent.length} ${urgent.length===1?'country':'countries'}</div><div class="priority-country-list">${urgent.map(g=>`<button data-focus-code="${g.code}"><span>${esc(g.country)}</span><strong>${g.priority.length}</strong></button>`).join('')}</div>`:'<div class="calm-note">No priority cards right now.<br>Use the flag on a card to add urgency.</div>'}</div>`;
+      const totals=window.ConferenceCore.totals(records,people),urgent=[...summary.values()].filter(c=>c.priority.length),unmapped=people.filter(p=>!byCode.has(p.countryCode)).length;
+      details.innerHTML=`<div class="world-overview"><div class="overview-orbit"><span>${totals.attending}</span><small>attending</small></div><h3>Your world of participants</h3><p>Hover or tap a country to see who’s attending.</p>${unmapped?`<p class="unmapped-note">${unmapped} ${unmapped===1?'participant has':'participants have'} no country yet. Their cards are under “Country not provided.”</p>`:''}${urgent.length?`<div class="urgency-note"><span class="red-dot"></span>${totals.priority} priority ${totals.priority===1?'person':'people'} across ${urgent.length} ${urgent.length===1?'country':'countries'}</div><div class="priority-country-list">${urgent.map(g=>`<button data-focus-code="${g.code}"><span>${esc(g.country)}</span><strong>${g.priority.length}</strong></button>`).join('')}</div>`:'<div class="calm-note">No priority cards right now.<br>Use the flag on a card to add urgency.</div>'}</div>`;
     }
     function show(code){
       if(!code){overview();return;}
@@ -33,48 +33,26 @@
       host.querySelectorAll('.is-hovered').forEach(el=>el.classList.remove('is-hovered'));
       if(code)host.querySelectorAll(`[data-code="${code}"]`).forEach(el=>el.classList.add('is-hovered'));
     }
-    function explore(code){const changed=hovered!==code;hovered=code;highlight(code);show(code||selected);if(changed)revealDetails();if(code&&zoom===1)focusCenter=byCode.get(code)?.center||focusCenter;}
-    function select(code){selected=assigned.has(code)?code:'';hovered='';highlight(code);$('map-country').value=selected;show(code);if(zoom>1&&byCode.has(code)){focusCenter=byCode.get(code).center;applyZoom();}if(assigned.has(code))onSelect(assigned.get(code));}
-    function applyZoom(smooth=true){
-      cancelAnimationFrame(zoomFrame);zoomFrame=0;
-      const w=1100/zoom,h=550/zoom,x=Math.max(0,Math.min(1100-w,focusCenter[0]-w/2)),y=Math.max(0,Math.min(550-h,focusCenter[1]-h/2));
-      const target=[x,y,w,h],from=svg.getAttribute('viewBox').split(' ').map(Number);
-      svg.classList.toggle('zoomed',zoom>1);
-      $('map-zoom-in').disabled=zoom>=4;$('map-zoom-out').disabled=zoom<=1;
-      if(!smooth||reducedMotion.matches||target.every((n,i)=>Math.abs(n-from[i])<.01)){svg.setAttribute('viewBox',target.join(' '));delete svg.dataset.zooming;return;}
-      svg.dataset.zooming='true';const start=performance.now();
-      const frame=time=>{
-        const progress=Math.min(1,(time-start)/340),ease=1-Math.pow(1-progress,3);
-        svg.setAttribute('viewBox',from.map((n,i)=>n+(target[i]-n)*ease).join(' '));
-        if(progress<1)zoomFrame=requestAnimationFrame(frame);
-        else{zoomFrame=0;svg.setAttribute('viewBox',target.join(' '));delete svg.dataset.zooming;}
-      };
-      zoomFrame=requestAnimationFrame(frame);
-    }
-    reducedMotion.addEventListener('change',()=>{if(reducedMotion.matches){applyZoom(false);detailMotion?.finish();}});
-    svg.addEventListener('pointerover',e=>{if(e.pointerType==='touch'||pointerStart)return;const code=e.target.closest('[data-code]')?.dataset.code;if(code&&code!==hovered)explore(code);});
+    function explore(code){const changed=hovered!==code;hovered=code;highlight(code);show(code||selected);if(changed)revealDetails();}
+    function select(code){selected=assigned.has(code)?code:'';hovered='';highlight(code);$('map-country').value=selected;show(code);if(assigned.has(code))onSelect(assigned.get(code));}
+    reducedMotion.addEventListener('change',()=>{if(reducedMotion.matches)detailMotion?.finish();});
+    svg.addEventListener('pointerover',e=>{if(e.pointerType==='touch')return;const code=e.target.closest('[data-code]')?.dataset.code;if(code&&code!==hovered)explore(code);});
     // Keep the last explored country visible so its names and action stay reachable.
     svg.addEventListener('pointerleave',()=>{highlight(selected);});
     svg.addEventListener('focusin',e=>{const code=e.target.closest('[data-code]')?.dataset.code;if(code)explore(code);});
-    svg.addEventListener('click',e=>{if(panned){panned=false;return;}const code=e.target.closest('[data-code]')?.dataset.code;if(code){focusCenter=byCode.get(code).center;select(code);}});
+    svg.addEventListener('click',e=>{const code=e.target.closest('[data-code]')?.dataset.code;if(code){select(code);}});
     svg.addEventListener('keydown',e=>{
       const code=e.target.closest('[data-code]')?.dataset.code;
       if(code&&(e.key==='Enter'||e.key===' ')){e.preventDefault();select(code);}
       if(e.key==='Escape'){selected='';hovered='';$('map-country').value='';onSelect('');overview();}
     });
-    svg.addEventListener('pointerdown',e=>{panned=false;if(zoom<=1||e.pointerType==='touch')return;cancelAnimationFrame(zoomFrame);zoomFrame=0;delete svg.dataset.zooming;const view=svg.getAttribute('viewBox').split(' ').map(Number);zoom=1100/view[2];focusCenter=[view[0]+view[2]/2,view[1]+view[3]/2];pointerStart={x:e.clientX,y:e.clientY,center:[...focusCenter]};});
-    svg.addEventListener('pointermove',e=>{if(!pointerStart)return;const dx=e.clientX-pointerStart.x,dy=e.clientY-pointerStart.y;if(Math.abs(dx)+Math.abs(dy)<4)return;if(!panned)svg.setPointerCapture(e.pointerId);panned=true;const box=svg.getBoundingClientRect(),scale=Math.min(box.width/(1100/zoom),box.height/(550/zoom));focusCenter=[pointerStart.center[0]-dx/scale,pointerStart.center[1]-dy/scale];applyZoom(false);});
-    const release=()=>pointerStart=null;svg.addEventListener('pointerup',release);svg.addEventListener('pointercancel',release);
-    $('map-zoom-in').onclick=()=>{zoom=Math.min(4,zoom*1.6);applyZoom();};
-    $('map-zoom-out').onclick=()=>{zoom=Math.max(1,zoom/1.6);applyZoom();};
-    $('map-reset').onclick=()=>{zoom=1;focusCenter=[550,275];selected='';hovered='';$('map-country').value='';applyZoom();onSelect('');overview();};
-    $('map-country').onchange=e=>{const code=e.target.value;if(code){focusCenter=byCode.get(code).center;select(code);}else{selected='';hovered='';onSelect('');overview();}};
+    $('map-country').onchange=e=>{const code=e.target.value;if(code){select(code);}else{selected='';hovered='';onSelect('');overview();}};
     details.addEventListener('click',e=>{const button=e.target.closest('[data-view-country],[data-focus-code]');if(!button)return;const code=button.dataset.viewCountry||button.dataset.focusCode;select(code);if(button.dataset.viewCountry)document.querySelector('.directory').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});});
-    applyZoom(false);host.setAttribute('aria-busy','false');host.dataset.ready='true';
+    host.setAttribute('aria-busy','false');host.dataset.ready='true';
     return {update(nextRecords,filterCountry,nextPeople=people){
-      if(nextPeople!==people){people=nextPeople;assigned.clear();people.forEach(p=>assigned.set(p.countryCode,p.country));selected='';hovered='';zoom=1;focusCenter=[550,275];applyZoom(false);}
+      if(nextPeople!==people){const changed=nextPeople.length!==people.length||nextPeople.some((p,i)=>p.id!==people[i]?.id);people=nextPeople;assigned.clear();people.forEach(p=>assigned.set(p.countryCode,p.country));if(changed){selected='';hovered='';}}
       records=nextRecords;summary=window.ConferenceCore.countrySummary(people,records);
-      const active=[...summary.values()].filter(g=>g.attending.length),priority=[...summary.values()].filter(g=>g.priority.length);
+      const active=[...summary.values()].filter(g=>g.attending.length&&byCode.has(g.code)),priority=[...summary.values()].filter(g=>g.priority.length&&byCode.has(g.code));
       $('map-active-count').textContent=active.length;$('map-priority-count').textContent=priority.length;
       for(const node of host.querySelectorAll('[data-code]')){
         const code=node.dataset.code,g=summary.get(code),country=g?.country||byCode.get(code).name;

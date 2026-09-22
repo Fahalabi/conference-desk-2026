@@ -12,6 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 import mimetypes
+import re
 
 ROOT = Path(__file__).resolve().parent
 DATASET = 'publishers-2026-farok'
@@ -19,6 +20,30 @@ BOOL_FIELDS = ('attending', 'priority', 'visa', 'flight', 'hotel')
 
 def now():
     return datetime.now(timezone.utc).isoformat()
+
+def validate_added(value):
+    if not isinstance(value,list) or len(value)>5000:raise ValueError('Invalid added participant list.')
+    result=[];seen=set()
+    for p in value:
+        if not isinstance(p,dict) or not isinstance(p.get('id'),str) or not re.fullmatch(r'added-[a-z0-9-]{8,80}',p['id']) or p['id'] in seen:raise ValueError('Invalid new participant ID.')
+        seen.add(p['id'])
+        keys=('firstName','lastName','email','organization','country','countryCode')
+        if not all(isinstance(p.get(k),str) and len(p[k])<=500 for k in keys) or not isinstance(p.get('phones'),list) or len(p['phones'])>10 or not all(isinstance(v,str) and len(v)<=100 for v in p['phones']) or p.get('owners') not in (['FH'],['SM']) or type(p.get('attending')) is not bool or type(p.get('visaRequired')) is not bool:raise ValueError('Invalid participant details.')
+        if p['email'] and not re.fullmatch(r'[^\s@]+@[^\s@]+\.[^\s@]+',p['email']):raise ValueError('Enter a valid email address or leave it blank.')
+        if (p['countryCode'] and not re.fullmatch(r'[a-z]{2}',p['countryCode'])) or bool(p['countryCode'])!=bool(p['country']):raise ValueError('Choose a country or leave it blank.')
+        if not any(s.strip() for s in [*(p[k] for k in keys if k!='countryCode'),*p['phones']]):raise ValueError('Enter at least one detail to identify this card.')
+        result.append(dict(id=p['id'],**{k:p[k].strip() for k in keys},phones=[s.strip() for s in p['phones'] if s.strip()],owners=p['owners'][:],attending=p['attending'],visaRequired=p['visaRequired'],added=True))
+    return result
+
+def merge_people(people,added):
+    result=dict(people)
+    for p in validate_added(added):
+        if p['id'] in result and result[p['id']]!=p:raise ValueError('This participant ID already exists with different details.')
+        result[p['id']]=p
+    return result
+
+def initial_record(p):
+    return dict(attending=p['attending'],priority=False,visaRequired=p.get('visaRequired',True),visa=False,flight=False,hotel=False,notes=[],draft='')
 
 def validate_records(records, people):
     if not isinstance(records, dict) or set(records) != set(people):
@@ -48,8 +73,10 @@ def validate_records(records, people):
 def restore_records(incoming, people, current):
     if isinstance(incoming,dict) and set(incoming)==set(people):
         return validate_records(incoming,people)
-    legacy={pid:p for pid,p in people.items() if 'FH' in p.get('owners',['FH'])}
-    return {**current,**validate_records(incoming,legacy)}
+    base={pid:p for pid,p in people.items() if not p.get('added')}
+    legacy={pid:p for pid,p in base.items() if 'FH' in p.get('owners',['FH'])}
+    if not isinstance(incoming,dict) or not incoming or not set(incoming)<=set(people) or not (set(base)<=set(incoming) or set(legacy)<=set(incoming)):raise ValueError('Backup participant list does not match this dashboard.')
+    return {**current,**validate_records(incoming,{pid:people[pid] for pid in incoming})}
 
 class Store:
     def __init__(self, directory):
@@ -61,12 +88,16 @@ class Store:
         self.lock = threading.Lock()
         seed = json.loads((ROOT/'participants.js').read_text(encoding='utf-8').removeprefix('window.CONFERENCE_DATA = ').rstrip(';\n'))
         self.people = {p['id']:p for p in seed['participants']}
-        self.state = {'schemaVersion':1,'datasetId':DATASET,'revision':0,'updatedAt':None,'applied':[], 'records':{pid:{'attending':p['attending'],'priority':False,'visaRequired':p.get('visaRequired',True),'visa':False,'flight':False,'hotel':False,'notes':[],'draft':''} for pid,p in self.people.items()}}
+        self.seed_people=dict(self.people)
+        self.state = {'schemaVersion':1,'datasetId':DATASET,'revision':0,'updatedAt':None,'applied':[], 'addedParticipants':[], 'records':{pid:initial_record(p) for pid,p in self.people.items()}}
         if self.path.exists():
             saved = json.loads(self.path.read_text(encoding='utf-8'))
             if saved.get('datasetId') != DATASET or saved.get('schemaVersion') != 1:
                 raise ValueError('Saved progress format is not recognized. Existing files have been preserved.')
             previous=saved['records']
+            saved['addedParticipants']=validate_added(saved.get('addedParticipants',[]))
+            self.people=merge_people(self.people,saved['addedParticipants'])
+            self.state['records'].update({p['id']:initial_record(p) for p in saved['addedParticipants']})
             saved['records'] = restore_records(previous,self.people,self.state['records'])
             if previous!=saved['records']:
                 # Keep an exact copy before extending an existing FH progress file.
@@ -91,6 +122,7 @@ class Store:
             raise ValueError('Expected 1–500 updates.')
         with self.lock:
             state=copy.deepcopy(self.state)
+            people=dict(self.people)
             applied=set(state['applied'])
             changed=False
             for op in operations:
@@ -101,11 +133,32 @@ class Store:
                 kind=op.get('kind')
                 if op.get('workspace')=='PR' and not (kind=='set' and op.get('field') in ('visa','flight','hotel') or kind=='noteStatus'):
                     raise ValueError('PR can update completion and note review only.')
-                if kind=='restore':
-                    state['records']=restore_records(op.get('records'),self.people,state['records'])
+                if kind=='addParticipant':
+                    if op.get('workspace') not in ('FH','SM'):raise ValueError('Add participants from FH or SM.')
+                    participant=validate_added([op.get('participant')])[0]
+                    if participant['owners']!=[op['workspace']]:raise ValueError('The card must belong to the current workspace.')
+                    if participant['id'] in people:raise ValueError('This participant has already been added.')
+                    if participant['email'] and any(p.get('email','').strip().lower()==participant['email'].lower() for p in people.values()):raise ValueError('A participant with this email already exists. Search FH or SM for their card.')
+                    if len(state['addedParticipants'])>=5000:raise ValueError('The added participant limit has been reached.')
+                    people[participant['id']]=participant;state['addedParticipants'].append(participant)
+                    record=initial_record(participant)
+                    if type(op.get('priority',False)) is not bool:raise ValueError('Invalid priority.')
+                    record['priority']=op.get('priority',False)
+                    for field in ('visa','flight','hotel'):
+                        if type(op.get(field,False)) is not bool:raise ValueError('Invalid completion status.')
+                        record[field]=op.get(field,False)
+                    note=op.get('note','')
+                    if not isinstance(note,str) or len(note)>20000:raise ValueError('Invalid note.')
+                    if note.strip():record['notes']=[dict(id=participant['id']+'-note',text=note.strip(),done=False,reviewed=False,createdAt=now(),updatedAt=now())]
+                    state['records'][participant['id']]=record
+                elif kind=='restore':
+                    incoming=validate_added(op.get('addedParticipants',[]));people=merge_people(people,incoming)
+                    state['addedParticipants']=[p for p in people.values() if p.get('added')]
+                    current={**{pid:initial_record(p) for pid,p in people.items()},**state['records']}
+                    state['records']=restore_records(op.get('records'),people,current)
                 else:
                     pid=op.get('person')
-                    if pid not in self.people:
+                    if pid not in people:
                         raise ValueError('Unknown participant.')
                     r=state['records'][pid]
                     if kind=='set':
@@ -140,7 +193,7 @@ class Store:
                 changed=True
             if not changed:
                 return copy.deepcopy(self.state)
-            state['records']=validate_records(state['records'],self.people)
+            state['records']=validate_records(state['records'],people)
             state['applied']=state['applied'][-10000:]
             state['revision']+=1
             state['updatedAt']=now()
@@ -149,6 +202,7 @@ class Store:
                 backup.write_bytes(self.path.read_bytes())
             self.persist(state)
             self.state=state
+            self.people=people
             for stale in sorted(self.backups.glob('progress-*.json'))[:-100]:
                 stale.unlink()
             return copy.deepcopy(state)
@@ -157,8 +211,10 @@ def handler_factory(store, port):
     class Handler(BaseHTTPRequestHandler):
         def client_snapshot(self,state):
             # Previously open FH tabs can keep saving while they are refreshed.
-            if self.headers.get('X-Conference-Roster')!='2':
-                state['records']={pid:r for pid,r in state['records'].items() if 'FH' in store.people[pid].get('owners',['FH'])}
+            version=self.headers.get('X-Conference-Roster')
+            if version!='3':
+                state['records']={pid:r for pid,r in state['records'].items() if pid in store.seed_people and (version=='2' or 'FH' in store.seed_people[pid].get('owners',['FH']))}
+                state.pop('addedParticipants',None)
             return state
         def log_message(self,*args):
             pass
