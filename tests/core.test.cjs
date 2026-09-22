@@ -2,6 +2,16 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const C=require('../core.js');
 const people=[{id:'a',firstName:'Mélody',lastName:'Test',email:'a',organization:'Org',country:'France',phones:[],attending:true},{id:'b',firstName:'Other',lastName:'Guest',email:'b',organization:'Org2',country:'Canada',phones:['1234567'],attending:false}];
+test('Added cards allow incomplete details and survive old and full backup restores',()=>{
+ const added={id:'added-12345678',firstName:'Only name',lastName:'',email:'',organization:'',country:'',countryCode:'',phones:[],owners:['SM'],attending:true,visaRequired:false};
+ const roster=C.mergePeople(people,[added]),records=C.initialRecords(roster);records[added.id].hotel=true;
+ assert.equal(roster.length,3);assert.equal(C.scopePeople(roster,'SM').length,1);assert(C.matches(roster[2],records[added.id],{country:'__missing__'}));
+ assert(!C.countrySummary(roster,records).has(''));assert.throws(()=>C.validateAddedParticipants([{...added,firstName:''}]));
+ assert.throws(()=>C.mergePeople(roster,[{...added,firstName:'Changed'}]));
+ assert(C.restoreRecords(C.initialRecords(people),roster,records)[added.id].hotel);
+ const fresh=[...people];const restored=C.apply(C.initialRecords(fresh),{kind:'restore',records,addedParticipants:[added]},fresh);
+ assert.equal(fresh.length,3);assert(restored[added.id].hotel);
+});
 test('Shared views preserve legacy records and waive unneeded visa completion',()=>{
  const roster=people.map((p,i)=>({...p,owners:[i?'SM':'FH'],visaRequired:!i,attending:true}));
  const records=C.initialRecords(roster);records.b.flight=true;records.b.hotel=true;
