@@ -21,9 +21,8 @@
   <div id="workspace-menu" class="workspace-menu" role="menu" aria-label="Choose workspace" hidden>
     <div class="eyebrow">SWITCH WORKSPACE</div>
     <button role="menuitemradio" data-workspace="FH" aria-checked="true"><span class="workspace-monogram">FH</span><span><strong>FH workspace</strong><small class="workspace-count"></small></span><span class="workspace-tick" aria-hidden="true">✓</span></button>
-    <button role="menuitemradio" data-workspace="SM" aria-checked="false"><span class="workspace-monogram">SM</span><span><strong>SM workspace</strong><small class="workspace-count"></small></span><span class="workspace-tick" aria-hidden="true">✓</span></button>
-    <button role="menuitemradio" data-workspace="PR" aria-checked="false"><span class="workspace-monogram">PR</span><span><strong>PR · Combined overview</strong><small class="workspace-count"></small></span><span class="workspace-tick" aria-hidden="true">✓</span></button>
-    <p>One shared record for each participant.</p>
+    <button role="menuitemradio" data-workspace="OV" aria-checked="false"><span class="workspace-monogram">◉</span><span><strong>Participants · View only</strong><small class="workspace-count"></small></span><span class="workspace-tick" aria-hidden="true">✓</span></button>
+    <p>FH for your work. View only for the combined guest list.</p>
   </div>
   <aside id="nav-drawer" class="nav-drawer" aria-labelledby="nav-drawer-title" hidden>
     <div class="drawer-heading"><div><div class="eyebrow">YOUR WORKSPACE</div><h2 id="nav-drawer-title">All participants</h2></div><button id="close-drawer" class="drawer-close" aria-label="Collapse navigation">×</button></div>
@@ -35,7 +34,7 @@
     <header class="topbar"><div class="breadcrumb">Workspace <span>/</span> <strong id="workspace-name">FH workspace</strong></div><div id="save-status" class="save-status" role="status" aria-live="polite"><i></i><span>Opening saved progress…</span></div></header>
     <main>
       <div id="save-error" class="notice error" role="alert" hidden></div>
-      <section class="page-heading"><div><div class="eyebrow">1–3 NOVEMBER 2026 <span>·</span> SHARJAH</div><h1>Participant dashboard<span>.</span></h1><p id="workspace-intro">Your people, their arrangements, and the details to follow up.</p><p id="workspace-policy" class="workspace-policy" hidden>PR can update completion checkboxes and mark notes reviewed or done. Other details are managed in FH and SM.</p></div><div class="backup-controls"><button class="button" id="restore-backup" title="Restore a progress backup">↥ <span>Restore</span></button><button class="button primary" id="export-data" title="Download this workspace’s details, progress and notes as an Excel workbook">↓ <span>Export Data</span></button><input id="backup-file" type="file" accept="application/json,.json" hidden></div></section>
+      <section class="page-heading"><div><div class="eyebrow">1–3 NOVEMBER 2026 <span>·</span> SHARJAH</div><h1 id="page-title">Participant dashboard<span>.</span></h1><p id="workspace-intro">Your people, their arrangements, and the details to follow up.</p><p id="workspace-policy" class="workspace-policy" hidden>View only · Both guest lists combined. Participant details are edited in FH.</p></div><div class="backup-controls"><button class="button" id="restore-backup" title="Restore a progress backup">↥ <span>Restore</span></button><button class="button primary" id="export-data" title="Download this workspace’s details, progress and notes as an Excel workbook">↓ <span>Export Data</span></button><input id="backup-file" type="file" accept="application/json,.json" hidden></div></section>
       <section class="world-panel" aria-labelledby="world-title">
         <div class="world-heading"><div><div class="eyebrow">YOUR GLOBAL GUEST LIST</div><h2 id="world-title">Attendance around the world</h2></div><div class="map-totals"><span><i class="orange-dot"></i><strong id="map-active-count">49</strong> countries attending</span><span class="priority-total"><i class="red-dot"></i><strong id="map-priority-count">0</strong> with priority</span></div></div>
         <div class="world-content">
@@ -45,14 +44,25 @@
         <div class="map-caption"><span>Based on this workspace’s assigned list. Priority includes people not attending.</span><a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Map: Natural Earth</a></div>
       </section>
       <section class="stats" aria-label="Progress overview">
-        <article class="stat people-stat"><div class="stat-top"><span>YOUR PARTICIPANTS</span><span class="stat-icon">♙</span></div><div class="stat-value" id="stat-total">124</div><div class="stat-foot" id="stat-attendance">121 attending · 3 not attending</div></article>
+        <article class="stat people-stat"><div class="stat-top"><span id="total-label">YOUR PARTICIPANTS</span><span class="stat-icon">♙</span></div><div class="stat-value" id="stat-total">124</div><div class="stat-foot" id="stat-attendance">121 attending · 3 not attending</div></article>
         <article class="stat"><div class="stat-top"><span>VISA COMPLETED</span><span class="stat-icon">▣</span></div><div class="stat-value"><span id="stat-visa">0</span><small> / <span id="visa-total">121</span></small></div><div class="meter"><span id="meter-visa"></span></div><div class="stat-foot" id="remaining-visa">121 remaining</div></article>
         <article class="stat"><div class="stat-top"><span>FLIGHTS COMPLETED</span><span class="stat-icon">↗</span></div><div class="stat-value"><span id="stat-flight">0</span><small> / <span class="attending-total">121</span></small></div><div class="meter"><span id="meter-flight"></span></div><div class="stat-foot" id="remaining-flight">121 remaining</div></article>
         <article class="stat"><div class="stat-top"><span>HOTELS COMPLETED</span><span class="stat-icon">⌂</span></div><div class="stat-value"><span id="stat-hotel">0</span><small> / <span class="attending-total">121</span></small></div><div class="meter"><span id="meter-hotel"></span></div><div class="stat-foot" id="remaining-hotel">121 remaining</div></article>
       </section>
-      <div class="stats-caption">Totals cover attending participants in this workspace. Visa totals include only people marked “Visa required.”</div>
+      <div class="stats-caption">Arrangement totals cover attending participants in this view. Visa totals include only people marked “Visa required.”</div>
+      <section id="overview-reports" class="overview-reports" aria-label="Combined numerical reports" hidden>
+        <div class="report-heading"><div><div class="eyebrow">COMBINED GUEST LIST · REPORT</div><h2>The guest list, in numbers<span>.</span></h2></div><span class="read-only-badge">View only</span></div>
+        <div class="report-metrics">
+          <article><span>Countries represented</span><strong id="report-countries">0</strong><small id="report-unassigned">Across both guest lists</small></article>
+          <article><span>Priority follow-ups</span><strong id="report-priority">0</strong><small>All participants, including non-attendees</small></article>
+          <article><span>Fully arranged</span><strong id="report-ready">0</strong><small>Attendees with every required item complete</small></article>
+          <article><span>Visa not required</span><strong id="report-waived">0</strong><small>Among attending participants</small></article>
+        </div>
+        <details class="country-report"><summary><span>Report by country <small id="report-country-count"></small></span><span class="chevron" aria-hidden="true">⌄</span></summary><div class="report-table-scroll" role="region" aria-label="Country report table" tabindex="0"><table><caption>All participants in both lists. Completion fractions count attendees; visas count only those who require one.</caption><thead><tr><th scope="col">Country</th><th scope="col">Participants</th><th scope="col">Attending</th><th scope="col">Not attending</th><th scope="col">Priority</th><th scope="col">Visa done</th><th scope="col">Flight done</th><th scope="col">Hotel done</th><th scope="col">Fully arranged</th></tr></thead><tbody id="country-report-body"></tbody></table></div></details>
+        <p class="report-caption" id="report-updated">Reports cover the full combined list, independent of the card filters.</p>
+      </section>
       <section class="directory" aria-labelledby="directory-title">
-        <div class="directory-heading"><h2 id="directory-title">Your participants <span id="result-count">124</span></h2><div class="directory-actions"><button class="text-button" id="clear-filters">Reset filters</button><button class="button primary" id="add-participant" disabled><span aria-hidden="true">＋</span> Add participant</button></div></div>
+        <div class="directory-heading"><h2 id="directory-title"><span id="directory-label">Your participants</span> <span id="result-count">124</span></h2><div class="directory-actions"><button class="text-button" id="clear-filters">Reset filters</button><button class="button primary" id="add-participant" disabled><span aria-hidden="true">＋</span> Add participant</button></div></div>
         <div class="filters"><label class="search"><span class="sr-only">Search participants</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input id="search" type="search" placeholder="Search name, email, organization or notes…" autocomplete="off"></label>
           <label class="filter"><span>Country</span><select id="filter-country"><option value="">All countries</option></select></label>
           <label class="filter"><span>Attendance</span><select id="filter-attendance"><option value="">Everyone</option><option value="attending">Attending</option><option value="not-attending">Not attending</option></select></label>
@@ -69,7 +79,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <dialog id="participant-dialog" aria-labelledby="participant-dialog-title" aria-describedby="participant-dialog-intro">
     <form id="participant-form">
-      <button type="button" class="close" id="close-participant" aria-label="Close add participant">×</button>
+      <button type="button" class="close" id="close-participant" aria-label="Close participant form">×</button>
       <div class="eyebrow" id="new-workspace-label">NEW CARD · FH</div>
       <h2 id="participant-dialog-title">Add a participant<span>.</span></h2>
       <p id="participant-dialog-intro">Fill in what you know. Missing details can stay blank.</p>
@@ -77,7 +87,7 @@
         <label class="entry-field"><span>First name</span><input id="new-first-name" name="firstName" autocomplete="off" maxlength="500" placeholder="First name" autofocus></label>
         <label class="entry-field"><span>Last name</span><input id="new-last-name" name="lastName" autocomplete="off" maxlength="500" placeholder="Last name"></label>
         <label class="entry-field"><span>Email</span><input id="new-email" name="email" type="email" autocomplete="off" maxlength="500" placeholder="Email address"></label>
-        <label class="entry-field"><span>Phone number</span><input id="new-phone" name="phone" type="tel" autocomplete="off" maxlength="100" placeholder="Include country code if known"></label>
+        <label class="entry-field"><span>Phone number</span><textarea id="new-phone" name="phone" autocomplete="off" maxlength="1010" rows="1" placeholder="One phone number per line"></textarea></label>
         <label class="entry-field"><span>Organization</span><input id="new-organization" name="organization" autocomplete="off" maxlength="500" placeholder="Organization name"></label>
         <label class="entry-field filter"><span>Country</span><select id="new-country" name="country"><option value="">Leave blank</option></select></label>
       </div>
@@ -91,10 +101,10 @@
         <label class="entry-field new-note-field"><span>First note</span><textarea id="new-note" maxlength="20000" rows="2" placeholder="Add a follow-up to this card…"></textarea></label>
       </div></details>
       <p id="participant-form-error" class="form-error" role="alert" hidden></p>
-      <div class="dialog-actions"><span class="new-card-save-hint">Saved locally · Shared with PR</span><button type="button" class="button" id="cancel-participant">Cancel</button><button type="submit" class="button primary" id="save-participant">Add participant</button></div>
+      <div class="dialog-actions"><span class="new-card-save-hint">Saved locally · Updates overview</span><button type="button" class="button" id="cancel-participant">Cancel</button><button type="submit" class="button primary" id="save-participant">Add participant</button></div>
     </form>
   </dialog>
-  <dialog id="help-dialog"><form method="dialog"><button class="close" aria-label="Close saving help">×</button></form><div class="eyebrow">YOUR WORK, SAVED</div><h2>Pick up where you left off.</h2><p id="storage-explanation"></p><p>New participant cards, attendance, visa requirements, priority, arrangement checkboxes, note reviews, and unfinished note drafts are saved automatically.</p><p><strong>Export Data</strong> downloads an Excel workbook with the current workspace’s details and progress, plus a Notes tab with all notes and drafts. Filters do not limit the export.</p><p>Use the backup button below to save a restorable copy of both workspaces. <strong>Restore</strong> accepts these JSON backups so you can move your progress to another browser or to the future GitHub version. Excel exports are for working with your data outside the dashboard.</p><p>With the local launcher, progress is stored in <code>data/progress.json</code> and the latest 100 previous saves are kept in <code>data/backups</code>. Keep this dashboard folder when moving computers.</p><button class="button primary" id="help-export">Download restore backup</button></dialog>
+  <dialog id="help-dialog"><form method="dialog"><button class="close" aria-label="Close saving help">×</button></form><div class="eyebrow">YOUR WORK, SAVED</div><h2>Pick up where you left off.</h2><p id="storage-explanation"></p><p>New participant cards, edited contact details, attendance, visa requirements, priority, arrangement checkboxes, note reviews, and unfinished note drafts are saved automatically.</p><p><strong>Export Data</strong> downloads an Excel workbook with the current workspace’s details and progress, plus a Notes tab with all notes and drafts. Filters do not limit the export.</p><p>Use the backup button below to save a restorable copy of both workspaces. <strong>Restore</strong> accepts these JSON backups to recover FH progress. Archived guest records are preserved. Excel exports are for working with your data outside the dashboard.</p><p>With the local launcher, progress is stored in <code>data/progress.json</code> and the latest 100 previous saves are kept in <code>data/backups</code>. Keep this dashboard folder when moving computers.</p><button class="button primary" id="help-export">Download restore backup</button></dialog>
   <dialog id="confirm-dialog"><div class="eyebrow">RESTORE BACKUP</div><h2>Replace current progress?</h2><p id="restore-summary"></p><p>Your current progress will be downloaded as a safety copy first.</p><div class="dialog-actions"><button class="button" id="cancel-restore">Cancel</button><button class="button primary" id="confirm-restore">Restore progress</button></div></dialog>
 </body>
 </html>

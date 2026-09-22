@@ -9,14 +9,17 @@ This public repository contains application code and an **empty participant temp
 - An icon-only navigation rail with panels for all participants, priority, non-attendees, and countries. Panels start folded.
 - A large offline world map. Hover or focus to see participants; click a country to filter its cards. Countries without attendees are dimmed, and countries with priority participants glow red.
 - Contact cards with separate first and last names, organization, email, available phone numbers, and country flags.
-- **Add participant** in FH and SM opens a glass form for a new card. Enter any known details; email, phone, names, organization, and country may be left blank. At least one identifying detail is needed. Attendance, visa requirement, priority, completed arrangements, and an initial note can be set when creating the card. A repeated email is flagged before another card is added.
-- New cards appear in the owner's workspace and PR automatically, including filters, country navigation, the map, totals, and Excel exports. Cards with no country are grouped under **Country not provided**. PR cannot create cards.
+- **Add participant** in FH opens a glass form for a new card. Enter any known details; email, phone, names, organization, and country may be left blank. At least one identifying detail is needed. Attendance, visa requirement, priority, completed arrangements, and an initial note can be set when creating the card. A repeated email is flagged before another card is added.
+- New cards appear in the FH and the combined overview automatically, including filters, country navigation, the map, totals, and Excel exports. Cards with no country are grouped under **Country not provided**. The overview cannot create or edit cards.
 - Green/red attendance toggles and independent Visa, Flight, and Hotel checkboxes. Arrangement totals count attending participants; changing attendance preserves completed work.
 - Foldable notes with editable to-do items, completion checkboxes, deletion undo, and autosaved drafts.
 - Search and combined country, attendance, priority, and completion filters.
 - All dropdowns use matching glass menus, with searchable country lists, flags, selected checkmarks, keyboard navigation, and placement that adapts to the screen.
-- The bottom-left avatar switches between **FH**, **SM**, and **PR**. FH and SM show their assigned guests; PR combines both by country. Cards display their owner, and the map, filters, counts, navigation, and Excel export follow the selected workspace.
-- Workspaces share one saved record per guest. Visible tabs refresh from the local server every two seconds and when focused. PR can change Visa/Flight/Hotel completion and mark notes reviewed or done; other card edits and restore are available in FH and SM.
+- The bottom-left avatar switches between **FH** and **Participants · View only**. FH is the working dashboard. The combined overview includes both FH and the archived SM guest list, grouped by country in compact boxes containing only names, organizations and country flags/names.
+- The overview shows totals, attendance, completed visa/flight/hotel arrangements, countries represented, priority follow-ups, fully arranged attendees and waived visas. An expandable country report supplies the same counts by country. Reports always cover the complete combined list, independently of card filters.
+- **Edit** on every FH card updates separate names, email, multiple phone numbers, organization and country. Optional fields may stay blank. Participant IDs remain stable so notes, drafts, priorities and arrangement history stay attached. Duplicate emails and stale edits from another tab are rejected. Saving retries are idempotent.
+- SM and PR are no longer editable workspaces. The former PR URL opens the view-only overview; the former SM URL falls back to FH. Archived records and their notes remain in private local storage for later reference. The server rejects mutations tagged SM, PR or OV and rejects changes to archived participants.
+- Open tabs refresh from the local server every two seconds and when focused. FH edits and new cards appear in the combined overview automatically. The switcher is a local display mode, not user authentication or a sharing permission system.
 - A green/orange visa requirement button distinguishes not-required from required. Visa completion totals include only attending guests who require a visa, and waived visas are excluded from the card’s required-arrangement count.
 - Pasted working-list statuses remain reference text, separate from completion checkboxes. Uploaded documents do not automatically mean a visa or flight booking is complete.
 - Soft focus highlights, fluid drawer and note transitions, a fixed map overview, and subtle button feedback. Card updates preserve the focused control and note input. The operating system's reduced-motion preference is respected.
@@ -42,7 +45,7 @@ The local server uses Python's standard library. The browser app has no package 
 
 With the local server, edits first save in browser storage and then in `data/progress.json` using atomic replacement. The latest 100 previous file saves are retained in `data/backups/`. The save indicator shows when the file is up to date, and failed requests retry from a browser queue.
 
-New cards are confirmed only after the local server saves them. Their contact details live in the private progress file, rather than in application source. Interrupted creation requests can be retried safely without duplicating a card. JSON backups include added cards and their progress; restoring an older backup preserves cards created since that backup. Existing FH and SM records are preserved when this feature is installed.
+New cards and contact edits are confirmed only after the local server saves them. Their contact details live in the private progress file, rather than in application source. Interrupted creation requests can be retried safely without duplicating a card. JSON backups include added cards, edited contact fields (`participantEdits`) and progress; restoring an older backup preserves cards created since that backup. Existing FH and SM records are preserved when this feature is installed.
 
 When served as a static website, including GitHub Pages, progress saves **only in the current browser on the current device**. The site does not synchronize notes between browsers or devices. Clearing site data removes that browser's copy.
 
@@ -54,7 +57,7 @@ Local progress, backups, spreadsheets, logs, and test output are excluded from t
 
 Your local `participants.js` supplies the participant list. Each record has a stable `id`, `email`, `firstName`, `lastName`, `organization`, `country`, lower-case `countryCode`, `phones` array, and initial `attending` boolean. Optional fields include `owners` (FH or SM), `visaRequired`, `sourceStatus`, and `contactReview`. Existing records without an owner default to FH. IDs use email where available; missing contacts use stable local IDs. Names remain separate from organizations, and missing contact details stay blank.
 
-When an existing FH roster is extended with SM records, the server preserves the original records and writes a migration backup before saving the expanded list. Restoring a legacy FH-only backup preserves current SM progress. JSON restore backups cover both workspaces; Excel exports cover the currently selected workspace and include ownership, visa requirement, source reference, and note review columns.
+When an existing FH roster is extended with SM records, the server preserves the original records and writes a migration backup before saving the expanded list. Restoring any FH backup preserves current archived SM progress. Older backups without contact edits preserve the current edited details. JSON restore backups cover both workspaces; Excel exports cover the currently selected workspace and include ownership, visa requirement, source reference, and note review columns.
 
 Participant files in a public repository or static website are public. A static frontend cannot hide data that it downloads. Keep private contact lists and personal progress outside public version control.
 
@@ -71,7 +74,7 @@ python -m unittest discover -s tests -p "test_*.py"
 
 Core checks cover filters, completion totals, state validation, country counts, map geometry, and country-code coverage. Persistence checks use isolated temporary folders and verify backups, atomic validation, replay handling, notes, and restart recovery.
 
-`tests/add_participant.cjs` runs browser integration checks with invented contacts and a separate local test server. It requires Playwright and Chrome, and accepts `DASHBOARD_PYTHON` and `DASHBOARD_CHROME` for runtime paths. It covers creation, optional details, duplicate detection, PR synchronization, new countries, mobile layout, keyboard interaction, safe retries, backups, and server restarts.
+`tests/fh_overview.cjs` runs current browser integration checks with invented contacts and a separate local test server. It requires Playwright and Chrome, and accepts `DASHBOARD_PYTHON` and `DASHBOARD_CHROME` for runtime paths. It covers editing, optional details, duplicate detection, stable notes and IDs, combined reports, archive preservation, read-only mutations, cross-tab synchronization, stale-edit rejection, mobile layout, safe retries, backups, exports and server restarts. The original tests/add_participant.cjs entry point forwards to this current integration test.
 
 ## Map and flag credits
 

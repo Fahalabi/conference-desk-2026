@@ -6,7 +6,7 @@
     return Object.fromEntries(people.map(p => [p.id, {attending:p.attending, priority:false, visaRequired:p.visaRequired!==false, visa:false, flight:false, hotel:false, notes:[], draft:''}]));
   }
   function owners(person){return person.owners||['FH'];}
-  function scopePeople(people,workspace){return workspace==='PR'?people:people.filter(p=>owners(p).includes(workspace));}
+  function scopePeople(people,workspace){return ['PR','OV'].includes(workspace)?people:people.filter(p=>owners(p).includes(workspace));}
   function validateAddedParticipants(value=[]){
     if(!Array.isArray(value)||value.length>5000)throw new Error('Invalid added participant list.');
     const seen=new Set();
@@ -20,14 +20,21 @@
       return {id:p.id,...Object.fromEntries(['firstName','lastName','email','organization','country','countryCode'].map(k=>[k,p[k].trim()])),phones:p.phones.map(s=>s.trim()).filter(Boolean),owners:[...p.owners],attending:p.attending,visaRequired:p.visaRequired,added:true};
     });
   }
-  function mergePeople(people,added=[]){
+  const detailFields=['firstName','lastName','email','organization','country','countryCode','phones'];
+  function detailsOf(p){return Object.fromEntries(detailFields.map(k=>[k,p[k]??(k==='phones'?[]:'')]));}
+  function validateDetails(value){
+    if(!value||Object.keys(value).length!==detailFields.length||!detailFields.every(k=>Object.hasOwn(value,k)))throw new Error('Invalid participant details.');
+    return detailsOf(validateAddedParticipants([{...value,id:'added-validation',owners:['FH'],attending:true,visaRequired:true}])[0]);
+  }
+  function mergePeople(people,added=[],edits={}){
     const result=[...people];
     for(const p of validateAddedParticipants(added)){
       const existing=result.find(x=>x.id===p.id);
       if(existing){if(JSON.stringify(existing)!==JSON.stringify(p))throw new Error('This participant ID already exists with different details.');}
       else result.push(p);
     }
-    return result;
+    if(!edits||Array.isArray(edits)||typeof edits!=='object'||Object.keys(edits).some(id=>!result.some(p=>p.id===id)))throw new Error('Unknown participant in edited details.');
+    return result.map(p=>edits[p.id]?{...p,...validateDetails(edits[p.id])}:p);
   }
   function restoreRecords(incoming,people,current=initialRecords(people)){
     if(Object.keys(incoming||{}).length===people.length)return validateRecords(incoming,people);
@@ -54,14 +61,27 @@
     return result;
   }
   function apply(records, op, people) {
-    if(op.workspace==='PR'&&!((op.kind==='set'&&['visa','flight','hotel'].includes(op.field))||op.kind==='noteStatus'))throw new Error('PR can update completion and note review only.');
+    if(['SM','PR','OV'].includes(op.workspace))throw new Error('This view is read-only. Make changes in FH.');
     if (op.kind === 'restore') {
-      const merged=mergePeople(people,op.addedParticipants||[]);
+      const incoming=op.participantEdits||{},edits=Object.fromEntries(Object.entries(incoming).filter(([id])=>owners(people.find(p=>p.id===id)||{}).includes('FH')));
+      const added=new Map(people.filter(p=>p.added).map(p=>[p.id,p]));
+      for(const p of validateAddedParticipants(op.addedParticipants||[])){
+        if(added.has(p.id)&&JSON.stringify(p.owners)!==JSON.stringify(added.get(p.id).owners))throw new Error('A backup cannot change participant ownership.');
+        if(!added.has(p.id)||owners(p).includes('FH'))added.set(p.id,p);
+      }
+      const merged=mergePeople(people.filter(p=>!p.added),[...added.values()],edits);
       const restored=restoreRecords(op.records,merged,{...initialRecords(merged),...records});
-      people.splice(0,people.length,...merged);return restored;
+      people.splice(0,people.length,...merged);return Object.fromEntries(merged.map(p=>[p.id,owners(p).includes('FH')?restored[p.id]:records[p.id]||restored[p.id]]));
     }
     if (!Object.hasOwn(records,op.person)) throw new Error('Unknown participant.');
+    if(!owners(people.find(p=>p.id===op.person)).includes('FH'))throw new Error('Archived participant records are read-only.');
     const r=records[op.person];
+    if(op.kind==='editParticipant'){
+      const p=people.find(p=>p.id===op.person),details=validateDetails(op.details);
+      if(JSON.stringify(detailsOf(p))!==JSON.stringify(validateDetails(op.previous)))throw new Error('These details changed in another tab. Close and reopen Edit.');
+      if(details.email&&details.email.toLowerCase()!==p.email?.toLowerCase()&&people.some(other=>other.id!==p.id&&other.email?.toLowerCase()===details.email.toLowerCase()))throw new Error('A participant with this email already exists in the saved list.');
+      Object.assign(p,details);return records;
+    }
     if (op.kind === 'set') {
       if (!([...fields,'visaRequired'].includes(op.field) && typeof op.value === 'boolean') && !(op.field === 'draft' && typeof op.value === 'string' && op.value.length <= 20000)) throw new Error('Invalid field update.');
       r[op.field]=op.value;
@@ -109,6 +129,6 @@
     }
     return groups;
   }
-  const api={DATASET,initialRecords,validateRecords,restoreRecords,validateAddedParticipants,mergePeople,owners,scopePeople,apply,matches,totals,countrySummary};
+  const api={DATASET,initialRecords,validateRecords,restoreRecords,validateAddedParticipants,validateDetails,detailsOf,mergePeople,owners,scopePeople,apply,matches,totals,countrySummary};
   if(typeof module!=='undefined')module.exports=api;else root.ConferenceCore=api;
 })(typeof window!=='undefined'?window:globalThis);

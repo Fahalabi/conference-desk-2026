@@ -35,6 +35,18 @@ def validate_added(value):
         result.append(dict(id=p['id'],**{k:p[k].strip() for k in keys},phones=[s.strip() for s in p['phones'] if s.strip()],owners=p['owners'][:],attending=p['attending'],visaRequired=p['visaRequired'],added=True))
     return result
 
+DETAIL_FIELDS = ('firstName','lastName','email','organization','country','countryCode','phones')
+
+def validate_details(value):
+    if not isinstance(value,dict) or set(value)!=set(DETAIL_FIELDS):raise ValueError('Invalid participant details.')
+    candidate=dict(value,id='added-validation',owners=['FH'],attending=True,visaRequired=True)
+    validated=validate_added([candidate])[0]
+    return {key:validated[key] for key in DETAIL_FIELDS}
+
+def edit_people(people,edits):
+    if not isinstance(edits,dict) or not set(edits)<=set(people):raise ValueError('Unknown participant in edited details.')
+    return {pid:{**p,**validate_details(edits[pid])} if pid in edits else p for pid,p in people.items()}
+
 def merge_people(people,added):
     result=dict(people)
     for p in validate_added(added):
@@ -89,14 +101,15 @@ class Store:
         seed = json.loads((ROOT/'participants.js').read_text(encoding='utf-8').removeprefix('window.CONFERENCE_DATA = ').rstrip(';\n'))
         self.people = {p['id']:p for p in seed['participants']}
         self.seed_people=dict(self.people)
-        self.state = {'schemaVersion':1,'datasetId':DATASET,'revision':0,'updatedAt':None,'applied':[], 'addedParticipants':[], 'records':{pid:initial_record(p) for pid,p in self.people.items()}}
+        self.state = {'schemaVersion':1,'datasetId':DATASET,'revision':0,'updatedAt':None,'applied':[], 'addedParticipants':[], 'participantEdits':{}, 'records':{pid:initial_record(p) for pid,p in self.people.items()}}
         if self.path.exists():
             saved = json.loads(self.path.read_text(encoding='utf-8'))
             if saved.get('datasetId') != DATASET or saved.get('schemaVersion') != 1:
                 raise ValueError('Saved progress format is not recognized. Existing files have been preserved.')
             previous=saved['records']
             saved['addedParticipants']=validate_added(saved.get('addedParticipants',[]))
-            self.people=merge_people(self.people,saved['addedParticipants'])
+            saved['participantEdits']=saved.get('participantEdits',{})
+            self.people=edit_people(merge_people(self.people,saved['addedParticipants']),saved['participantEdits'])
             self.state['records'].update({p['id']:initial_record(p) for p in saved['addedParticipants']})
             saved['records'] = restore_records(previous,self.people,self.state['records'])
             if previous!=saved['records']:
@@ -131,14 +144,14 @@ class Store:
                 if op['id'] in applied:
                     continue
                 kind=op.get('kind')
-                if op.get('workspace')=='PR' and not (kind=='set' and op.get('field') in ('visa','flight','hotel') or kind=='noteStatus'):
-                    raise ValueError('PR can update completion and note review only.')
+                if op.get('workspace') in ('PR','OV','SM'):
+                    raise ValueError('This view is read-only. Make changes in FH.')
                 if kind=='addParticipant':
-                    if op.get('workspace') not in ('FH','SM'):raise ValueError('Add participants from FH or SM.')
+                    if op.get('workspace')!='FH':raise ValueError('Add participants from FH.')
                     participant=validate_added([op.get('participant')])[0]
                     if participant['owners']!=[op['workspace']]:raise ValueError('The card must belong to the current workspace.')
                     if participant['id'] in people:raise ValueError('This participant has already been added.')
-                    if participant['email'] and any(p.get('email','').strip().lower()==participant['email'].lower() for p in people.values()):raise ValueError('A participant with this email already exists. Search FH or SM for their card.')
+                    if participant['email'] and any(p.get('email','').strip().lower()==participant['email'].lower() for p in people.values()):raise ValueError('A participant with this email already exists in the saved list.')
                     if len(state['addedParticipants'])>=5000:raise ValueError('The added participant limit has been reached.')
                     people[participant['id']]=participant;state['addedParticipants'].append(participant)
                     record=initial_record(participant)
@@ -151,15 +164,36 @@ class Store:
                     if not isinstance(note,str) or len(note)>20000:raise ValueError('Invalid note.')
                     if note.strip():record['notes']=[dict(id=participant['id']+'-note',text=note.strip(),done=False,reviewed=False,createdAt=now(),updatedAt=now())]
                     state['records'][participant['id']]=record
+                elif kind=='editParticipant':
+                    pid=op.get('person')
+                    if pid not in people or 'FH' not in people[pid].get('owners',['FH']):raise ValueError('Only FH participant details can be edited.')
+                    details=validate_details(op.get('details'))
+                    previous=validate_details(op.get('previous'))
+                    if previous!={key:people[pid].get(key,[] if key=='phones' else '') for key in DETAIL_FIELDS}:raise ValueError('These details changed in another tab. Close and reopen Edit to use the latest details.')
+                    email=details['email'].lower()
+                    if email and email!=people[pid].get('email','').lower() and any(p.get('email','').lower()==email for other,p in people.items() if other!=pid):raise ValueError('A participant with this email already exists in the saved list.')
+                    state['participantEdits'][pid]=details
+                    people[pid]={**people[pid],**details}
                 elif kind=='restore':
-                    incoming=validate_added(op.get('addedParticipants',[]));people=merge_people(people,incoming)
+                    incoming=validate_added(op.get('addedParticipants',[]))
+                    added={p['id']:p for p in state['addedParticipants']}
+                    for p in incoming:
+                        if p['id'] in added and p['owners']!=added[p['id']]['owners']:raise ValueError('A backup cannot change participant ownership.')
+                        if p['id'] not in added or p['owners']==['FH']:added[p['id']]=p
+                    people=merge_people(self.seed_people,list(added.values()))
                     state['addedParticipants']=[p for p in people.values() if p.get('added')]
                     current={**{pid:initial_record(p) for pid,p in people.items()},**state['records']}
-                    state['records']=restore_records(op.get('records'),people,current)
+                    restored=restore_records(op.get('records'),people,current)
+                    state['records']={pid:restored[pid] if 'FH' in p.get('owners',['FH']) else current[pid] for pid,p in people.items()}
+                    edits=op.get('participantEdits',{})
+                    edit_people(people,edits)
+                    state['participantEdits'].update({pid:d for pid,d in edits.items() if 'FH' in people[pid].get('owners',['FH'])})
+                    people=edit_people(people,state['participantEdits'])
                 else:
                     pid=op.get('person')
                     if pid not in people:
                         raise ValueError('Unknown participant.')
+                    if 'FH' not in people[pid].get('owners',['FH']):raise ValueError('Archived participant records are read-only.')
                     r=state['records'][pid]
                     if kind=='set':
                         field,value=op.get('field'),op.get('value')
