@@ -12,6 +12,7 @@ This public repository contains application code and an **empty participant temp
 - Green/red attendance toggles and independent Visa, Flight, and Hotel checkboxes. Arrangement totals count attending participants; changing attendance preserves completed work.
 - Foldable notes with editable to-do items, completion checkboxes, deletion undo, and autosaved drafts.
 - Search and combined country, attendance, priority, and completion filters.
+- All dropdowns use matching glass menus, with searchable country lists, flags, selected checkmarks, keyboard navigation, and placement that adapts to the screen.
 - Soft focus highlights, fluid drawer and note transitions, eased map zoom, and subtle button feedback. Card updates preserve the focused control and note input. The operating system's reduced-motion preference is respected.
 - **Export Data** downloads a real `.xlsx` workbook with Participants and Notes worksheets, frozen headings, and filters. It includes the complete list, statuses, notes, and drafts regardless of the current screen filters.
 
